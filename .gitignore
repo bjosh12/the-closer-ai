@@ -28,8 +28,6 @@ logs/
 *.log
 
 # Scripts
-scripts/prepare-wincsodesign.js
-scripts/create-icon.js
-# Note: Keep the scripts directory if you want to share them, 
-# but these specific ones might be considered build-time workarounds.
-# Actually, it's better to keep them so others can build too.
+# Keeping these so GitHub Actions can use them
+# scripts/prepare-wincsodesign.js
+# scripts/create-icon.js
