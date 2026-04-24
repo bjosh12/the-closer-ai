@@ -39,10 +39,7 @@ jobs:
           # release the app after building
           release: true
         env:
-          # Avoid code signing errors on Windows for now since we disabled it in package.json
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          WIN_CSC_LINK: ""
-          WIN_CSC_KEY_PASSWORD: ""
-          # For macOS, you'd need secrets for signing/notarization
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          # Removed empty WIN_CSC_LINK as it was causing path resolution errors on Windows
+          # For macOS signing, you would add APPLE_ID/PASSWORD secrets here in the future
+
