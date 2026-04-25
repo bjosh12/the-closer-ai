@@ -191,7 +191,7 @@ export function HomeDashboard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(135deg, #a78bfa, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17 }}>🎯</div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: '1rem', letterSpacing: '-0.02em', color: '#fff' }}>The Closer AI</div>
+            <div style={{ fontWeight: 800, fontSize: '1rem', letterSpacing: '-0.02em', color: '#fff' }}>Mocking Bird AI</div>
             <div style={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.3)' }}>AI-Powered Interview Assistant</div>
           </div>
         </div>
@@ -349,7 +349,7 @@ export function HomeDashboard() {
                 </div>
                 <button onClick={handleStartSession} disabled={!canStart || (userPlan === 'free' && sessionMinutesUsed >= 15)}
                   style={{ padding: '0.7rem 1.875rem', background: (canStart && (userPlan !== 'free' || sessionMinutesUsed < 15)) ? 'linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%)' : 'rgba(255,255,255,0.05)', border: 'none', borderRadius: 9, color: (canStart && (userPlan !== 'free' || sessionMinutesUsed < 15)) ? '#fff' : 'rgba(255,255,255,0.2)', fontWeight: 800, fontSize: '0.9rem', letterSpacing: '-0.01em', cursor: (canStart && (userPlan !== 'free' || sessionMinutesUsed < 15)) ? 'pointer' : 'not-allowed', boxShadow: (canStart && (userPlan !== 'free' || sessionMinutesUsed < 15)) ? '0 0 20px rgba(124,58,237,0.3)' : 'none', transition: 'all 0.2s' }}>
-                  {userPlan === 'free' && sessionMinutesUsed >= 15 ? `🔒 ${timeLeftStr || 'Upgrade to Continue'}` : '🚀 Launch The Closer AI'}
+                  {userPlan === 'free' && sessionMinutesUsed >= 15 ? `🔒 ${timeLeftStr || 'Upgrade to Continue'}` : '🚀 Launch Mocking Bird AI'}
                 </button>
               </div>
             </div>

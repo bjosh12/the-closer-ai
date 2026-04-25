@@ -23,8 +23,24 @@ export function CloudLogin() {
           const { data } = await (window as any).electronAPI.cloud.verifyLicense(storedLicense, hwId);
           if (data?.success) {
             setLicensed(true, storedLicense);
+            // Schedule periodic re-verification every 30 minutes
+            const interval = setInterval(async () => {
+              const recheckHwId = await (window as any).electronAPI.license.getMachineId();
+              const { data: recheckData } = await (window as any).electronAPI.cloud.verifyLicense(storedLicense, recheckHwId);
+              if (!recheckData?.success) {
+                // License revoked — clear and force re-login
+                await (window as any).electronAPI.store.set('LICENSE_KEY', null);
+                setLicensed(false, '');
+                setCurrentView('cloud-login');
+                clearInterval(interval);
+              }
+            }, 30 * 60 * 1000);
             setCurrentView('home');
             return;
+          } else {
+            // License is revoked or invalid — clear it immediately
+            await (window as any).electronAPI.store.set('LICENSE_KEY', null);
+            setLicensed(false, '');
           }
         }
 
@@ -90,20 +106,54 @@ export function CloudLogin() {
 
   const handleLicense = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!cloudUser) {
-      setError('Please Sign In or Create an Account first to link your license.');
-      setActiveTab('login');
-      return;
-    }
-
     setLoading(true);
     setError('');
+
     try {
       const hwId = await (window as any).electronAPI.license.getMachineId();
-      const { data, error } = await (window as any).electronAPI.cloud.verifyLicense(licenseKey, hwId, cloudUser.id);
-      
-      if (error) throw error;
+      let userId = cloudUser?.id ?? null;
+
+      // If not signed in, create an account first then activate
+      if (!userId) {
+        if (!email || !password) {
+          setError('Please enter your email and password to link your license to an account.');
+          setLoading(false);
+          return;
+        }
+
+        // Try sign up first
+        const { user: newUser, session, error: signUpError } = await (window as any).electronAPI.cloud.signUp(email, password, {
+          full_name: fullName || email.split('@')[0],
+          goal_role: currentRole || 'Professional',
+        });
+
+        if (signUpError && !signUpError.message?.includes('already registered')) {
+          setError(signUpError.message);
+          setLoading(false);
+          return;
+        }
+
+        // If already registered, sign in instead
+        if (signUpError?.message?.includes('already registered') || (!session && newUser)) {
+          const { user: existingUser, error: signInError } = await (window as any).electronAPI.cloud.signIn(email, password);
+          if (signInError) {
+            setError('Account exists but wrong password. Please sign in first.');
+            setActiveTab('login');
+            setLoading(false);
+            return;
+          }
+          userId = existingUser?.id ?? null;
+          if (existingUser) setCloudUser(existingUser);
+        } else if (newUser) {
+          userId = newUser.id;
+          setCloudUser(newUser);
+        }
+      }
+
+      // Now activate the license
+      const { data, error: licError } = await (window as any).electronAPI.cloud.verifyLicense(licenseKey, hwId, userId);
+      if (licError) throw licError;
+
       if (!data.success) {
         setError(data.message);
       } else {
@@ -112,7 +162,7 @@ export function CloudLogin() {
         setCurrentView('home');
       }
     } catch (err: any) {
-      setError(err.message || 'Verification failed');
+      setError(err.message || 'Activation failed');
     } finally {
       setLoading(false);
     }
@@ -135,7 +185,7 @@ export function CloudLogin() {
       <div style={{ width: '100%', maxWidth: '400px' }}>
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, #a78bfa, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, margin: '0 auto 1rem', boxShadow: '0 8px 25px rgba(124,58,237,0.3)' }}>🎯</div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-0.02em' }}>The Closer AI</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-0.02em' }}>Mocking Bird AI</h1>
           <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.8rem', marginTop: '0.4rem' }}>Setup your professional interview environment.</p>
         </div>
 
@@ -211,15 +261,57 @@ export function CloudLogin() {
           {activeTab === 'license' && (
             <form onSubmit={handleLicense} style={inputGroupStyle}>
               <div>
-                <label style={labelStyle}>Lifetime License Key</label>
-                <input type="text" value={licenseKey} onChange={e => setLicenseKey(e.target.value)} placeholder="IC-XXXX-XXXX-XXXX" style={{ ...inputStyle, fontFamily: 'monospace' }} required />
+                <label style={labelStyle}>License Key</label>
+                <input type="text" value={licenseKey} onChange={e => setLicenseKey(e.target.value)} placeholder="IC-XXXX-XXXX-XXXX" style={{ ...inputStyle, fontFamily: 'monospace', letterSpacing: '0.05em' }} required />
               </div>
-              <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', lineHeight: 1.5, margin: '0.5rem 0' }}>
-                * Hardware Locked: This license will be tied to this computer ID. Contact support to transfer.
+
+              {!cloudUser && (
+                <>
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1rem' }}>
+                    <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginBottom: '0.75rem', lineHeight: 1.5 }}>
+                      🔗 Link this license to your account — new or existing.
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.6rem' }}>
+                      <div>
+                        <label style={labelStyle}>Full Name</label>
+                        <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="John Doe" style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Role / Goal</label>
+                        <input type="text" value={currentRole} onChange={e => setCurrentRole(e.target.value)} placeholder="Software Eng" style={inputStyle} />
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: '0.6rem' }}>
+                      <label style={labelStyle}>Email Address</label>
+                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" style={inputStyle} required />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Password</label>
+                      <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" style={inputStyle} required />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {cloudUser && (
+                <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>
+                  ✓ Signed in as <strong style={{ color: '#a78bfa' }}>{cloudUser.email}</strong>. This license will be linked to your account.
+                </p>
+              )}
+
+              <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)', lineHeight: 1.5, margin: '0.25rem 0' }}>
+                🔒 Hardware-locked to this machine. Contact support to transfer.
               </p>
-              <button type="submit" disabled={loading} style={{ padding: '0.875rem', background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
-                {loading ? 'Verifying...' : 'Activate Lifetime License →'}
+
+              <button type="submit" disabled={loading} style={{ padding: '0.875rem', background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.85rem' }}>
+                {loading ? 'Activating...' : '🔑 Activate License →'}
               </button>
+
+              <div style={{ textAlign: 'center' }}>
+                <button type="button" onClick={() => setActiveTab('login')} style={{ background: 'none', border: 'none', color: '#a78bfa', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 600 }}>
+                  Already have an account? Sign in instead
+                </button>
+              </div>
             </form>
           )}
         </div>

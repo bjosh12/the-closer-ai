@@ -6,6 +6,11 @@ export function Settings() {
   const [deepgramKey, setDeepgramKey] = useState('');
   const [openAiKey, setOpenAiKey] = useState('');
   const [isSaved, setIsSaved] = useState(false);
+  const [appVersion, setAppVersion] = useState('');
+  const [updateStatus, setUpdateStatus] = useState<'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'error' | null>(null);
+  const [updateVersion, setUpdateVersion] = useState('');
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [launchAtStartup, setLaunchAtStartup] = useState(false);
 
   useEffect(() => {
     if ((window as any).electronAPI) {
@@ -16,6 +21,21 @@ export function Settings() {
         if (oaKey) setOpenAiKey(oaKey);
       };
       loadKeys();
+
+      // Load app version
+      (window as any).electronAPI.app.getVersion().then((v: string) => setAppVersion(v));
+      (window as any).electronAPI.app.getLaunchAtStartup().then((v: boolean) => setLaunchAtStartup(v));
+
+      // Listen for update status broadcasts from main process
+      (window as any).electronAPI.app.onUpdateStatus((status: string) => {
+        setLastChecked(new Date());
+        if (status === 'checking') setUpdateStatus('checking');
+        else if (status === 'latest') setUpdateStatus('latest');
+        else if (status.startsWith('available:')) { setUpdateStatus('available'); setUpdateVersion(status.split(':')[1]); }
+        else if (status.startsWith('downloading:')) setUpdateStatus('downloading');
+        else if (status.startsWith('downloaded:')) { setUpdateStatus('downloaded'); setUpdateVersion(status.split(':')[1]); }
+        else if (status.startsWith('error:')) setUpdateStatus('error');
+      });
     }
   }, []);
 
@@ -26,6 +46,18 @@ export function Settings() {
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2000);
     }
+  };
+
+  const handleSignOut = async () => {
+    if (!confirm('Sign out of your account?')) return;
+    await (window as any).electronAPI?.cloud.signOut();
+    setCurrentView('cloud-login');
+  };
+
+  const handleToggleStartup = async () => {
+    const next = !launchAtStartup;
+    await (window as any).electronAPI?.app.setLaunchAtStartup(next);
+    setLaunchAtStartup(next);
   };
 
   const inputStyle: React.CSSProperties = {
@@ -100,7 +132,7 @@ export function Settings() {
                 Your transcription and answer generation are handled automatically via your subscription.
               </p>
               <button 
-                onClick={() => window.open('https://localhost:3000/pricing', '_blank')}
+                onClick={() => setCurrentView('cloud-login')}
                 style={{ marginTop: '1.5rem', background: 'none', border: '1px solid rgba(196,181,253,0.3)', color: '#c4b5fd', padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
               >
                 Switch to Lifetime License →
@@ -128,6 +160,96 @@ export function Settings() {
               </div>
             </div>
           </div>
+
+          {/* Keyboard Shortcuts Card */}
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '1.5rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>⌨️</span> Keyboard Shortcuts
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+              {[
+                { keys: 'Alt + C', desc: 'Show / Hide widget' },
+                { keys: 'Alt + S', desc: 'Start / Stop session' },
+                { keys: 'Alt + A', desc: 'Generate AI answer' },
+                { keys: 'Alt + X', desc: 'Clear transcript' },
+                { keys: 'Ctrl + ,', desc: 'Open Settings' },
+                { keys: 'Ctrl + H', desc: 'View history' },
+              ].map(({ keys, desc }) => (
+                <div key={keys} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '0.5rem 0.75rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>{desc}</span>
+                  <code style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '0.15rem 0.5rem', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700 }}>{keys}</code>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Preferences Card */}
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '1.5rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>⚙️</span> Preferences
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Launch at startup toggle */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>Launch at Startup</div>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', marginTop: '0.15rem' }}>Start Mocking Bird AI when Windows starts</div>
+                </div>
+                <button
+                  onClick={handleToggleStartup}
+                  style={{
+                    width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                    background: launchAtStartup ? '#7c3aed' : 'rgba(255,255,255,0.1)',
+                    position: 'relative', transition: 'background 0.2s',
+                  }}
+                >
+                  <div style={{
+                    position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%',
+                    background: '#fff', transition: 'left 0.2s',
+                    left: launchAtStartup ? 23 : 3,
+                  }} />
+                </button>
+              </div>
+
+              {/* Sign out */}
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1rem' }}>
+                <button
+                  onClick={handleSignOut}
+                  style={{ padding: '0.5rem 1.25rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, color: '#ef4444', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Sign Out
+                </button>
+                <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)', marginTop: '0.5rem' }}>
+                  You'll need to sign in again or re-activate your license.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Version & Update Status Card */}
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '1.5rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>🚀</span> App Version & Updates
+            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff', fontFamily: 'monospace' }}>v{appVersion || '...'}</span>
+                  {updateStatus === 'latest' && <span style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>✓ Up to date</span>}
+                  {updateStatus === 'available' && <span style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>↑ v{updateVersion} available</span>}
+                  {updateStatus === 'downloading' && <span style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>⬇ Downloading...</span>}
+                  {updateStatus === 'downloaded' && <span style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>✓ v{updateVersion} ready</span>}
+                  {updateStatus === 'checking' && <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>Checking...</span>}
+                  {updateStatus === 'error' && <span style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>Check failed</span>}
+                </div>
+                {lastChecked && <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)' }}>Last checked: {lastChecked.toLocaleTimeString()}</span>}
+              </div>
+              <button onClick={() => (window as any).electronAPI?.app.checkForUpdates()} style={{ padding: '0.4rem 0.875rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>
+                Check for Updates
+              </button>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>

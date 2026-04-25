@@ -1,12 +1,12 @@
 <div align="center">
-  <img src="public/icon.png" width="128" alt="The Closer AI Logo" />
+  <img src="public/icon.png" width="128" alt="Mocking Bird AI Logo" />
   
-  # The Closer AI
+  # Mocking Bird AI
 
-  **The Stealthiest AI Interview Assistant Ever Built**
+  **The Smartest AI Interview Assistant Ever Built**
 
-  [![Release](https://img.shields.io/github/v/release/bjosh12/the-closer-ai?style=flat-square)](https://github.com/bjosh12/the-closer-ai/releases)
-  [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey?style=flat-square)](https://github.com/bjosh12/the-closer-ai/releases)
+  [![Release](https://img.shields.io/github/v/release/bjosh12/mocking-bird-ai?style=flat-square)](https://github.com/bjosh12/mocking-bird-ai/releases)
+  [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey?style=flat-square)](https://github.com/bjosh12/mocking-bird-ai/releases)
   
   <p align="center">
     Real-time AI suggestions that sync with your resume, knowledge base, and job description. Featuring Ghost Mode and Global Hotkeys for full discretion during live interviews.
@@ -28,7 +28,7 @@
 
 You do not need to build the app from source to use it! 
 
-1. Head over to the **[Releases](https://github.com/bjosh12/the-closer-ai/releases/latest)** page.
+1. Head over to the **[Releases](https://github.com/bjosh12/mocking-bird-ai/releases/latest)** page.
 2. Download the installer for your operating system:
    * **Windows**: Download the `.exe` file.
    * **macOS**: Download the `.dmg` file.
@@ -46,8 +46,8 @@ If you want to contribute or build the app locally, follow these steps:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/bjosh12/the-closer-ai.git
-   cd the-closer-ai
+   git clone https://github.com/bjosh12/mocking-bird-ai.git
+   cd mocking-bird-ai
    ```
 
 2. Install dependencies:

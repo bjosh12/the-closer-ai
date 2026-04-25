@@ -61,7 +61,7 @@ export function Widget() {
           WebkitAppRegion: 'drag'
         } as any}
       >
-        <span>THE CLOSER AI</span>
+        <span>MOCKING BIRD AI</span>
         
         {showControls && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', WebkitAppRegion: 'no-drag' } as any}>

@@ -53,7 +53,7 @@ export function Onboarding() {
     <div className="flex h-screen items-center justify-center p-4">
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle>Welcome to The Closer AI</CardTitle>
+          <CardTitle>Welcome to Mocking Bird AI</CardTitle>
           <p className="text-sm text-muted-foreground">Let's set up your profile to ground our AI.</p>
         </CardHeader>
         <CardContent className="space-y-4">

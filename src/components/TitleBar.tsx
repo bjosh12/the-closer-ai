@@ -18,7 +18,7 @@ export function TitleBar() {
       style={{ WebkitAppRegion: 'drag' } as any}
     >
       <div className={`text-xs font-semibold tracking-widest transition-colors duration-300 ${isHovered ? 'text-primary' : 'text-white/30'}`}>
-        THE CLOSER AI
+        MOCKING BIRD AI
       </div>
       
       {/* We add an empty spacer here so the native window controls overlay (minimize, close) has space to click without dragging */}

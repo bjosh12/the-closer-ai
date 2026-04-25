@@ -59,5 +59,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   license: {
     verify: (key: string) => ipcRenderer.invoke('license:verify', key),
     getMachineId: () => ipcRenderer.invoke('license:getMachineId'),
-  }
+  },
+  app: {
+    getVersion: () => ipcRenderer.invoke('app:getVersion'),
+    checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+    getLaunchAtStartup: () => ipcRenderer.invoke('app:getLaunchAtStartup'),
+    setLaunchAtStartup: (enabled: boolean) => ipcRenderer.invoke('app:setLaunchAtStartup', enabled),
+    isFirstRun: () => ipcRenderer.invoke('app:isFirstRun'),
+    completeOnboarding: () => ipcRenderer.invoke('app:completeOnboarding'),
+    getWhatsNew: () => ipcRenderer.invoke('app:getWhatsNew'),
+    onUpdateStatus: (callback: (status: string) => void) => {
+      ipcRenderer.on('app:updateStatus', (_, status) => callback(status));
+    },
+  },
 });

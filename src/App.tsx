@@ -10,26 +10,38 @@ import { Widget } from './screens/Widget';
 import { TitleBar } from './components/TitleBar';
 import { KnowledgeBase } from './screens/KnowledgeBase';
 import { CloudLogin } from './screens/CloudLogin';
+import { WhatsNewModal } from './components/WhatsNewModal';
 
 function App() {
-  const { currentView, setDocuments } = useStore();
+  const { currentView, setDocuments, setCurrentView } = useStore();
   const [isWidget, setIsWidget] = useState(false);
+  const [whatsNew, setWhatsNew] = useState<{ version: string } | null>(null);
 
   useEffect(() => {
     if ((window as any).electronAPI) {
       (window as any).electronAPI.db.getDocuments().then(setDocuments);
+
+      // First-run detection → show onboarding before login
+      (window as any).electronAPI.app.isFirstRun().then((isFirst: boolean) => {
+        if (isFirst && currentView === 'cloud-login') {
+          setCurrentView('onboarding');
+        }
+      });
+
+      // What's New after update
+      (window as any).electronAPI.app.getWhatsNew().then(
+        ({ isNew, version }: { isNew: boolean; version: string }) => {
+          if (isNew) setWhatsNew({ version });
+        }
+      );
     }
   }, []);
 
   useEffect(() => {
-    if (window.location.hash === '#widget') {
-      setIsWidget(true);
-    }
+    if (window.location.hash === '#widget') setIsWidget(true);
   }, []);
 
-  if (isWidget) {
-    return <Widget />;
-  }
+  if (isWidget) return <Widget />;
 
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-foreground font-sans antialiased selection:bg-primary selection:text-primary-foreground overflow-hidden">
@@ -44,6 +56,14 @@ function App() {
         {currentView === 'scorecard' && <Scorecard />}
         {currentView === 'knowledge-base' && <KnowledgeBase />}
       </div>
+
+      {/* What's New modal — shown once after each update */}
+      {whatsNew && (
+        <WhatsNewModal
+          version={whatsNew.version}
+          onClose={() => setWhatsNew(null)}
+        />
+      )}
     </div>
   );
 }

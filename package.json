@@ -1,15 +1,15 @@
 {
-  "name": "the-closer-ai",
-  "version": "2.0.5",
+  "name": "mocking-bird-ai",
+  "version": "2.0.4",
   "description": "Cross-platform AI interview assistant",
   "main": "dist-electron/main.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bjosh12/the-closer-ai.git"
+    "url": "https://github.com/bjosh12/mocking-bird-ai.git"
   },
   "build": {
-    "appId": "com.thecloser.app",
-    "productName": "The-Closer-AI",
+    "appId": "com.mockingbird.app",
+    "productName": "Mocking-Bird-AI",
     "directories": {
       "output": "release"
     },
@@ -21,7 +21,7 @@
       {
         "provider": "github",
         "owner": "bjosh12",
-        "repo": "the-closer-ai"
+        "repo": "mocking-bird-ai"
       }
     ],
     "win": {
@@ -39,7 +39,7 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "The Closer AI",
+      "shortcutName": "Mocking Bird AI",
       "installerIcon": "public/icon.ico",
       "uninstallerIcon": "public/icon.ico",
       "deleteAppDataOnUninstall": false
@@ -71,7 +71,7 @@
     "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
     "electron-store": "^8.2.0",
-    "electron-updater": "^6.8.3",
+    "electron-updater": "6.8.3",
     "framer-motion": "^11.2.10",
     "lucide-react": "^0.379.0",
     "pdf-parse": "^1.1.1",
