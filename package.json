@@ -1,6 +1,6 @@
 {
   "name": "mocking-bird-ai",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "description": "Cross-platform AI interview assistant",
   "main": "dist-electron/main.js",
   "repository": {
