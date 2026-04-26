@@ -17,9 +17,33 @@ export function Scorecard() {
       let oaKey = 'mock_key';
       if ((window as any).electronAPI) {
         oaKey = await (window as any).electronAPI.store.get('OPENAI_API_KEY');
+        
+        // If no local key, try cloud proxy
+        const hasLocalKey = oaKey && oaKey !== 'mock_key';
+        if (!hasLocalKey) {
+          const state = useStore.getState();
+          if (state.cloudUser) {
+            try {
+              const session = await (window as any).electronAPI.cloud.getAuthSession();
+              if (session?.access_token) {
+                const res = await fetch('https://project-vw750.vercel.app/api/desktop/openai', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+                  body: JSON.stringify({ model: 'gpt-4o-mini', messages: [], max_tokens: 1 })
+                });
+                if (res.ok || res.status === 401) {
+                  // Proxy is reachable — use proxy token
+                  oaKey = `ey-${session.access_token}`;
+                }
+              }
+            } catch (e) {
+              console.error('[Scorecard] Cloud proxy check failed:', e);
+            }
+          }
+        }
       }
 
-      const llm = new OpenAIProvider(oaKey);
+      const llm = new OpenAIProvider(oaKey || 'mock_key');
       const result = await llm.generateScorecard(
         profile.resume_text,
         currentSession.job_description,

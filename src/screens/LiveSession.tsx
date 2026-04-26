@@ -12,6 +12,7 @@ export function LiveSession() {
   const [micAnalytics, setMicAnalytics] = useState({ wpm: 0, fillers: 0 });
   const [copyIdx, setCopyIdx] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [keysReady, setKeysReady] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -30,7 +31,12 @@ export function LiveSession() {
         let oaKey = await (window as any).electronAPI.store.get('OPENAI_API_KEY');
         
         const state = useStore.getState();
-        if (!state.isLicensed && state.cloudUser) {
+        const hasLocalKeys = dgKey && dgKey !== 'mock_key' && oaKey && oaKey !== 'mock_key';
+        
+        // If user has no local API keys AND is signed into a cloud account, use the cloud proxy.
+        // This works for both Pro subscribers and users who switched from Lifetime back to cloud.
+        if (!hasLocalKeys && state.cloudUser) {
+          console.log('[LiveSession] No local API keys found, attempting cloud proxy for user:', state.cloudUser.email);
           try {
             const session = await (window as any).electronAPI.cloud.getAuthSession();
             if (session?.access_token) {
@@ -43,20 +49,31 @@ export function LiveSession() {
                 dgKey = config.deepgram_key;
                 // Use JWT for OpenAI proxy
                 oaKey = `ey-${session.access_token}`; // Prefix so we know it's a proxy token
+                console.log('[LiveSession] Cloud proxy keys loaded successfully');
               } else {
-                alert(`Failed to connect to Cloud Proxy (Status: ${res.status}). Ensure you have an internet connection and the service is up.`);
+                const errBody = await res.text().catch(() => 'No body');
+                console.error(`[LiveSession] Cloud proxy returned ${res.status}:`, errBody);
+                alert(`Failed to connect to Cloud AI Proxy (Status: ${res.status}). Please check your internet connection or try re-signing in.`);
               }
+            } else {
+              console.error('[LiveSession] No auth session/access_token found. User may need to re-login.');
+              alert('Your session has expired. Please sign out and sign back in.');
             }
           } catch (e: any) {
-            console.error('Failed to load cloud proxy config', e);
-            alert(`Failed to reach Cloud Proxy at project-vw750.vercel.app: ${e.message}`);
+            console.error('[LiveSession] Failed to load cloud proxy config:', e);
+            alert(`Failed to reach Cloud AI Proxy: ${e.message}`);
           }
+        } else if (hasLocalKeys) {
+          console.log('[LiveSession] Using local API keys (Lifetime mode)');
+        } else {
+          console.warn('[LiveSession] No API keys found and no cloud user. AI features will not work.');
         }
         
         const lang = currentSession?.language || 'en';
         sttSystem.current = new DeepgramProvider(dgKey || 'mock_key', lang);
         sttMic.current = new DeepgramProvider(dgKey || 'mock_key', lang);
         llm.current = new OpenAIProvider(oaKey || 'mock_key');
+        setKeysReady(true);
       };
       loadKeys();
       (window as any).electronAPI.widget.open();
@@ -138,7 +155,10 @@ export function LiveSession() {
   const handleAnswerNow = async (specificQuestion?: string) => {
     // Always read fresh state from Zustand to avoid stale closures
     const { profile: freshProfile, currentSession: freshSession, documents: freshDocs, transcripts: freshTranscripts } = useStore.getState();
-    if (!freshSession || !llm.current) return;
+    if (!freshSession || !llm.current || !keysReady) {
+      console.warn('[LiveSession] handleAnswerNow blocked: session=', !!freshSession, 'llm=', !!llm.current, 'keysReady=', keysReady);
+      return;
+    }
 
     setIsGenerating(true);
     if ((window as any).electronAPI) (window as any).electronAPI.widget.update('Generating answer...');
