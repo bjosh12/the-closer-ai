@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     signUp: (email: string, password: string, metadata?: any) => ipcRenderer.invoke('cloud:signUp', email, password, metadata),
     signOut: () => ipcRenderer.invoke('cloud:signOut'),
     getUser: () => ipcRenderer.invoke('cloud:getUser'),
+    getAuthSession: () => ipcRenderer.invoke('cloud:getAuthSession'),
     getProfile: (userId: string) => ipcRenderer.invoke('cloud:getProfile', userId),
     getDocuments: (userId: string) => ipcRenderer.invoke('cloud:getDocuments', userId),
     syncDocument: (doc: any, userId: string) => ipcRenderer.invoke('cloud:syncDocument', doc, userId),

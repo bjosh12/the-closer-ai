@@ -10,6 +10,7 @@ export interface CloudSyncHelpers {
   signUp: (email: string, password: string, metadata?: any) => Promise<{ user: any; session: any; error: any }>;
   signOut: () => Promise<void>;
   getUser: () => Promise<any>;
+  getAuthSession: () => Promise<any>;
   getProfile: (userId: string) => Promise<any>;
   syncDocument: (doc: { id: string; title: string; content: string }, userId: string) => Promise<void>;
   deleteDocument: (id: string) => Promise<void>;
@@ -45,6 +46,11 @@ export const cloudSync: CloudSyncHelpers = {
   getUser: async () => {
     const { data: { user } } = await supabase.auth.getUser();
     return user;
+  },
+
+  getAuthSession: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session;
   },
 
   getProfile: async (userId: string) => {

@@ -190,6 +190,7 @@ ipcMain.handle('cloud:signIn', (_, email, password) => cloudSync.signIn(email, p
 ipcMain.handle('cloud:signUp', (_, email, password, metadata) => cloudSync.signUp(email, password, metadata));
 ipcMain.handle('cloud:signOut', () => cloudSync.signOut());
 ipcMain.handle('cloud:getUser', () => cloudSync.getUser());
+ipcMain.handle('cloud:getAuthSession', () => cloudSync.getAuthSession());
 ipcMain.handle('cloud:getProfile', (_, userId) => cloudSync.getProfile(userId));
 ipcMain.handle('cloud:getDocuments', (_, userId) => cloudSync.getDocuments(userId));
 ipcMain.handle('cloud:syncDocument', (_, doc, userId) => cloudSync.syncDocument(doc, userId));

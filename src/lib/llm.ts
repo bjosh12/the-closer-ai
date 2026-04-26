@@ -47,11 +47,15 @@ export class OpenAIProvider implements LLMProvider {
     const prompt = buildScorecardPrompt(resume, jd, formattedTranscripts);
 
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const isProxy = this.apiKey.startsWith('ey-');
+      const token = isProxy ? this.apiKey.substring(3) : this.apiKey;
+      const url = isProxy ? 'https://mockingbirdai.com/api/desktop/openai' : 'https://api.openai.com/v1/chat/completions';
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
@@ -76,11 +80,15 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const isProxy = this.apiKey.startsWith('ey-');
+      const token = isProxy ? this.apiKey.substring(3) : this.apiKey;
+      const url = isProxy ? 'https://mockingbirdai.com/api/desktop/openai' : 'https://api.openai.com/v1/chat/completions';
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',

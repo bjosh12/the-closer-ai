@@ -26,8 +26,33 @@ export function LiveSession() {
   useEffect(() => {
     if ((window as any).electronAPI) {
       const loadKeys = async () => {
-        const dgKey = await (window as any).electronAPI.store.get('DEEPGRAM_API_KEY');
-        const oaKey = await (window as any).electronAPI.store.get('OPENAI_API_KEY');
+        let dgKey = await (window as any).electronAPI.store.get('DEEPGRAM_API_KEY');
+        let oaKey = await (window as any).electronAPI.store.get('OPENAI_API_KEY');
+        
+        const state = useStore.getState();
+        if (!state.isLicensed && state.cloudUser) {
+          try {
+            const session = await (window as any).electronAPI.cloud.getAuthSession();
+            if (session?.access_token) {
+              // Fetch proxy config from web app
+              const res = await fetch('https://mockingbirdai.com/api/desktop/config', {
+                headers: { 'Authorization': `Bearer ${session.access_token}` }
+              });
+              if (res.ok) {
+                const config = await res.json();
+                dgKey = config.deepgram_key;
+                // Use JWT for OpenAI proxy
+                oaKey = `ey-${session.access_token}`; // Prefix so we know it's a proxy token
+              } else {
+                alert(`Failed to connect to Cloud Proxy (Status: ${res.status}). Ensure you have an internet connection and the service is up.`);
+              }
+            }
+          } catch (e: any) {
+            console.error('Failed to load cloud proxy config', e);
+            alert(`Failed to reach Cloud Proxy at mockingbirdai.com: ${e.message}`);
+          }
+        }
+        
         const lang = currentSession?.language || 'en';
         sttSystem.current = new DeepgramProvider(dgKey || 'mock_key', lang);
         sttMic.current = new DeepgramProvider(dgKey || 'mock_key', lang);
