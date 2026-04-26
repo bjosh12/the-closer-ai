@@ -44,18 +44,24 @@ export function CloudLogin() {
           }
         }
 
-        // 2. Check for cloud session
-        const user = await (window as any).electronAPI.cloud.getUser();
-        if (user) {
-          setCloudUser(user);
+      // 2. Check for cloud session
+      const user = await (window as any).electronAPI.cloud.getUser();
+      if (user) {
+        setCloudUser(user);
+        if (!cloudUser) {
           setCurrentView('home');
           return;
+        } else {
+          setActiveTab('license');
         }
+      } else {
+        setCloudUser(null);
       }
-      setChecking(false);
-    };
-    check();
-  }, []);
+    }
+    setChecking(false);
+  };
+  check();
+}, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '@/store/useStore';
 
 export function Settings() {
-  const { setCurrentView, isLicensed } = useStore();
+  const { setCurrentView, isLicensed, setCloudUser } = useStore();
   const [deepgramKey, setDeepgramKey] = useState('');
   const [openAiKey, setOpenAiKey] = useState('');
   const [isSaved, setIsSaved] = useState(false);
@@ -52,6 +52,7 @@ export function Settings() {
   const handleSignOut = async () => {
     if (!confirm('Sign out of your account?')) return;
     await (window as any).electronAPI?.cloud.signOut();
+    setCloudUser(null);
     setCurrentView('cloud-login');
   };
 
