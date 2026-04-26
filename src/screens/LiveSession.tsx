@@ -35,7 +35,7 @@ export function LiveSession() {
             const session = await (window as any).electronAPI.cloud.getAuthSession();
             if (session?.access_token) {
               // Fetch proxy config from web app
-              const res = await fetch('https://mockingbirdai.com/api/desktop/config', {
+              const res = await fetch('https://project-vw750.vercel.app/api/desktop/config', {
                 headers: { 'Authorization': `Bearer ${session.access_token}` }
               });
               if (res.ok) {
@@ -49,7 +49,7 @@ export function LiveSession() {
             }
           } catch (e: any) {
             console.error('Failed to load cloud proxy config', e);
-            alert(`Failed to reach Cloud Proxy at mockingbirdai.com: ${e.message}`);
+            alert(`Failed to reach Cloud Proxy at project-vw750.vercel.app: ${e.message}`);
           }
         }
         

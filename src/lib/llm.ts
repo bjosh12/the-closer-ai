@@ -49,7 +49,7 @@ export class OpenAIProvider implements LLMProvider {
     try {
       const isProxy = this.apiKey.startsWith('ey-');
       const token = isProxy ? this.apiKey.substring(3) : this.apiKey;
-      const url = isProxy ? 'https://mockingbirdai.com/api/desktop/openai' : 'https://api.openai.com/v1/chat/completions';
+      const url = isProxy ? 'https://project-vw750.vercel.app/api/desktop/openai' : 'https://api.openai.com/v1/chat/completions';
 
       const response = await fetch(url, {
         method: 'POST',
@@ -82,7 +82,7 @@ export class OpenAIProvider implements LLMProvider {
     try {
       const isProxy = this.apiKey.startsWith('ey-');
       const token = isProxy ? this.apiKey.substring(3) : this.apiKey;
-      const url = isProxy ? 'https://mockingbirdai.com/api/desktop/openai' : 'https://api.openai.com/v1/chat/completions';
+      const url = isProxy ? 'https://project-vw750.vercel.app/api/desktop/openai' : 'https://api.openai.com/v1/chat/completions';
 
       const response = await fetch(url, {
         method: 'POST',
