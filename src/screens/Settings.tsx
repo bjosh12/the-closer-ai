@@ -9,6 +9,7 @@ export function Settings() {
   const [appVersion, setAppVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'error' | null>(null);
   const [updateVersion, setUpdateVersion] = useState('');
+  const [updateErrorMsg, setUpdateErrorMsg] = useState('');
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [updateChecking, setUpdateChecking] = useState(false);
@@ -35,7 +36,10 @@ export function Settings() {
         else if (status.startsWith('available:')) { setUpdateStatus('available'); setUpdateVersion(status.split(':')[1]); }
         else if (status.startsWith('downloading:')) setUpdateStatus('downloading');
         else if (status.startsWith('downloaded:')) { setUpdateStatus('downloaded'); setUpdateVersion(status.split(':')[1]); }
-        else if (status.startsWith('error:')) setUpdateStatus('error');
+        else if (status.startsWith('error:')) { 
+          setUpdateStatus('error'); 
+          setUpdateErrorMsg(status.replace('error:', '')); 
+        }
       });
     }
   }, []);
@@ -258,14 +262,14 @@ export function Settings() {
                   {updateStatus === 'downloading' && <span style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>⬇ Downloading...</span>}
                   {updateStatus === 'downloaded' && <span style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>✓ v{updateVersion} ready</span>}
                   {updateStatus === 'checking' && <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>Checking...</span>}
-                  {updateStatus === 'error' && <span style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>Check failed</span>}
+                  {updateStatus === 'error' && <span style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>{updateErrorMsg || 'Check failed'}</span>}
                 </div>
                 {lastChecked && <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)' }}>Last checked: {lastChecked.toLocaleTimeString()}</span>}
               </div>
               <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                 {updateStatus === 'downloaded' && (
                   <button
-                    onClick={() => { if ((window as any).electronAPI) (window as any).electronAPI.app.checkForUpdates(); /* This will trigger quitAndInstall in main if already ready */ }}
+                    onClick={() => { if ((window as any).electronAPI) (window as any).electronAPI.app.installUpdate(); }}
                     style={{ padding: '0.4rem 1rem', background: '#22c55e', border: 'none', borderRadius: 8, color: '#fff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(34,197,94,0.3)' }}
                   >
                     Install & Restart Now
@@ -277,7 +281,11 @@ export function Settings() {
                     setUpdateChecking(true);
                     setUpdateStatus('checking');
                     setLastChecked(new Date());
-                    await (window as any).electronAPI?.app.checkForUpdates();
+                    try {
+                      await (window as any).electronAPI?.app.checkForUpdates();
+                    } catch (e) {
+                      setUpdateStatus('error');
+                    }
                     // Give it 3s then reset spinner (actual result comes via onUpdateStatus)
                     setTimeout(() => setUpdateChecking(false), 3000);
                   }}

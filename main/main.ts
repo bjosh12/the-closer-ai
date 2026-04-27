@@ -196,7 +196,19 @@ ipcMain.on('window:toggle-maximize', () => {
 
 // ─── IPC: App ─────────────────────────────────────────────────────────────────
 ipcMain.handle('app:getVersion', () => app.getVersion());
-ipcMain.handle('app:checkForUpdates', () => autoUpdater.checkForUpdatesAndNotify());
+ipcMain.handle('app:checkForUpdates', async () => {
+  try {
+    const result = await autoUpdater.checkForUpdatesAndNotify();
+    if (!result) {
+      mainWindow?.webContents.send('app:updateStatus', 'error:Updates not available in local dev mode');
+    }
+    return result;
+  } catch (err: any) {
+    mainWindow?.webContents.send('app:updateStatus', `error:${err.message}`);
+    throw err;
+  }
+});
+ipcMain.handle('app:installUpdate', () => autoUpdater.quitAndInstall());
 
 ipcMain.handle('app:getLaunchAtStartup', () => app.getLoginItemSettings().openAtLogin);
 ipcMain.handle('app:setLaunchAtStartup', (_, enabled: boolean) => {
@@ -299,6 +311,7 @@ ipcMain.handle('widget:open', () => {
     width: 450, height: 300, transparent: true, frame: false, alwaysOnTop: true, skipTaskbar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), nodeIntegration: true },
   });
+  widgetWindow.setContentProtection(true);
   if (process.env.VITE_DEV_SERVER_URL) widgetWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}#widget`);
   else widgetWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'widget' });
   widgetWindow.on('closed', () => { widgetWindow = null; });
@@ -308,6 +321,7 @@ ipcMain.on('widget:update', (_, data) => widgetWindow?.webContents.send('widget:
 ipcMain.on('widget:setOpacity', (_, opacity) => widgetWindow?.setOpacity(opacity));
 ipcMain.on('widget:setIgnoreMouseEvents', (_, ignore) => widgetWindow?.setIgnoreMouseEvents(ignore, { forward: true }));
 ipcMain.on('widget:forceAnswer', () => mainWindow?.webContents.send('shortcut:generate-answer'));
+ipcMain.on('widget:clear', () => widgetWindow?.webContents.send('widget:onClear'));
 
 // ─── IPC: License ─────────────────────────────────────────────────────────────
 async function getMachineId() {

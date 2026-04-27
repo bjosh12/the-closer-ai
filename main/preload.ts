@@ -35,14 +35,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     close: () => ipcRenderer.invoke('widget:close'),
     update: (data: { text: string; question?: string }) => ipcRenderer.send('widget:update', data),
     onUpdate: (callback: (data: { text: string; question?: string }) => void) => {
+      ipcRenderer.removeAllListeners('widget:onUpdate');
       ipcRenderer.on('widget:onUpdate', (_, data) => callback(data));
     },
     setOpacity: (opacity: number) => ipcRenderer.send('widget:setOpacity', opacity),
     setIgnoreMouseEvents: (ignore: boolean) => ipcRenderer.send('widget:setIgnoreMouseEvents', ignore),
     onToggleGhost: (callback: () => void) => {
+      ipcRenderer.removeAllListeners('widget:toggleGhost');
       ipcRenderer.on('widget:toggleGhost', () => callback());
     },
-    forceAnswer: () => ipcRenderer.send('widget:forceAnswer')
+    forceAnswer: () => ipcRenderer.send('widget:forceAnswer'),
+    clear: () => ipcRenderer.send('widget:clear'),
+    onClear: (callback: () => void) => {
+      ipcRenderer.removeAllListeners('widget:onClear');
+      ipcRenderer.on('widget:onClear', () => callback());
+    }
   },
   windowAPI: {
     toggleMaximize: () => ipcRenderer.send('window:toggle-maximize')
@@ -69,12 +76,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+    installUpdate: () => ipcRenderer.invoke('app:installUpdate'),
     getLaunchAtStartup: () => ipcRenderer.invoke('app:getLaunchAtStartup'),
     setLaunchAtStartup: (enabled: boolean) => ipcRenderer.invoke('app:setLaunchAtStartup', enabled),
     isFirstRun: () => ipcRenderer.invoke('app:isFirstRun'),
     completeOnboarding: () => ipcRenderer.invoke('app:completeOnboarding'),
     getWhatsNew: () => ipcRenderer.invoke('app:getWhatsNew'),
     onUpdateStatus: (callback: (status: string) => void) => {
+      ipcRenderer.removeAllListeners('app:updateStatus');
       ipcRenderer.on('app:updateStatus', (_, status) => callback(status));
     },
     onShortcut: (channel: string, callback: () => void) => {
@@ -86,6 +95,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         'shortcut:open-history'
       ];
       if (validChannels.includes(channel)) {
+        ipcRenderer.removeAllListeners(channel);
         ipcRenderer.on(channel, () => callback());
       }
     },

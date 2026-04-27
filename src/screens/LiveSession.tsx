@@ -108,7 +108,7 @@ export function LiveSession() {
       (window as any).electronAPI.app.onShortcut('shortcut:clear-transcript', () => {
         const { clearTranscripts } = useStore.getState();
         clearTranscripts();
-        if ((window as any).electronAPI) (window as any).electronAPI.widget.update('Waiting for AI suggestions...');
+        if ((window as any).electronAPI) (window as any).electronAPI.widget.clear();
       });
     }
     return () => { 
@@ -147,11 +147,31 @@ export function LiveSession() {
       if (autoAnswerTimer.current) clearTimeout(autoAnswerTimer.current);
       questionBufferRef.current = [];
     } else {
+      // 1. Initialize audio capture FIRST to ensure we have a valid user gesture
+      // for AudioContext creation, and to catch permission errors immediately.
+      audioSystem.current = new AudioRecorder(data => sttSystem.current!.sendAudio(data), 'system');
+      audioMic.current = new AudioRecorder(data => sttMic.current!.sendAudio(data), 'mic');
+      
+      const [sysOk, micOk] = await Promise.all([
+        audioSystem.current.start(), 
+        audioMic.current.start()
+      ]);
+
+      if (!sysOk || !micOk) {
+        alert("Failed to start audio capture. Please check your microphone and screen recording permissions.");
+        audioSystem.current?.stop();
+        audioMic.current?.stop();
+        return;
+      }
+
+      // 2. Connect to STT after audio is ready
       try {
         await Promise.all([sttSystem.current.connect(), sttMic.current.connect()]);
       } catch (err: any) {
         console.error('Failed to connect to Deepgram:', err);
         alert(`Transcription Connection Error: ${err.message}. Ensure your API keys are valid.`);
+        audioSystem.current?.stop();
+        audioMic.current?.stop();
         return;
       }
       
@@ -222,9 +242,6 @@ export function LiveSession() {
         }
       });
 
-      audioSystem.current = new AudioRecorder(data => sttSystem.current!.sendAudio(data), 'system');
-      audioMic.current = new AudioRecorder(data => sttMic.current!.sendAudio(data), 'mic');
-      await Promise.all([audioSystem.current.start(), audioMic.current.start()]);
       setIsRecording(true);
     }
   };

@@ -58,6 +58,11 @@ export function Widget() {
           return newVal;
         });
       });
+
+      (window as any).electronAPI.widget.onClear(() => {
+        setHistory([]);
+        setIsLoading(false);
+      });
     }
   }, []);
 
