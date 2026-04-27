@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, globalShortcut, dialog, Tray, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, globalShortcut, dialog, Tray, Menu, desktopCapturer } from 'electron';
 import path from 'path';
 import { dbHelpers } from './db';
 import { cloudSync } from './cloud';
@@ -61,7 +61,7 @@ function setupTray() {
         click: () => { app.setLoginItemSettings({ openAtLogin: !isStartup }); buildMenu(); }
       },
       { type: 'separator' },
-      { label: 'Quit', click: () => { app.exit(0); } },
+      { label: 'Quit Mocking Bird AI', click: () => { app.exit(0); } },
     ]);
     tray?.setContextMenu(menu);
   };
@@ -120,14 +120,64 @@ app.whenReady().then(() => {
   createWindow();
   setupTray();
   setupAutoUpdater();
-
-  globalShortcut.register('Alt+C', () => {
-    if (widgetWindow) {
-      widgetWindow.isVisible() ? widgetWindow.hide() : widgetWindow.show();
-    } else {
-      mainWindow?.isVisible() ? mainWindow.hide() : mainWindow?.show();
-    }
+  
+  // Enable silent system audio capture for getDisplayMedia
+  const { session } = require('electron');
+  session.defaultSession.setDisplayMediaRequestHandler((_request: any, callback: any) => {
+    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+      callback({ video: sources[0], audio: 'loopback' });
+    });
   });
+
+  const registerShortcuts = () => {
+    globalShortcut.unregisterAll();
+    
+    // Alt+C: Toggle Widget/Main Window
+    globalShortcut.register('Alt+C', () => {
+      if (widgetWindow) {
+        widgetWindow.isVisible() ? widgetWindow.hide() : widgetWindow.show();
+      } else {
+        mainWindow?.isVisible() ? mainWindow.hide() : mainWindow?.show();
+      }
+    });
+
+    // Alt+G: Toggle Widget Ghost Mode (Click-through)
+    globalShortcut.register('Alt+G', () => {
+      if (widgetWindow) {
+        // We need to track the state. For now we can use a store or just send a message.
+        widgetWindow.webContents.send('widget:toggleGhost');
+      }
+    });
+
+    // Alt+S: Start/Stop Session
+    globalShortcut.register('Alt+S', () => {
+      mainWindow?.webContents.send('shortcut:toggle-session');
+    });
+
+    // Alt+A: Generate Answer
+    globalShortcut.register('Alt+A', () => {
+      mainWindow?.webContents.send('shortcut:generate-answer');
+    });
+
+    // Alt+X: Clear Transcript
+    globalShortcut.register('Alt+X', () => {
+      mainWindow?.webContents.send('shortcut:clear-transcript');
+    });
+
+    // Ctrl+,: Open Settings
+    globalShortcut.register('CommandOrControl+,', () => {
+      mainWindow?.show();
+      mainWindow?.webContents.send('shortcut:open-settings');
+    });
+
+    // Ctrl+H: View History
+    globalShortcut.register('CommandOrControl+H', () => {
+      mainWindow?.show();
+      mainWindow?.webContents.send('shortcut:open-history');
+    });
+  };
+
+  registerShortcuts();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -152,6 +202,7 @@ ipcMain.handle('app:getLaunchAtStartup', () => app.getLoginItemSettings().openAt
 ipcMain.handle('app:setLaunchAtStartup', (_, enabled: boolean) => {
   app.setLoginItemSettings({ openAtLogin: enabled });
 });
+ipcMain.on('app:quit', () => app.exit(0));
 
 ipcMain.handle('app:isFirstRun', () => !store.get('HAS_ONBOARDED'));
 ipcMain.handle('app:completeOnboarding', () => store.set('HAS_ONBOARDED', true));
@@ -224,6 +275,23 @@ ipcMain.handle('url:fetch', async (_, url) => {
   });
 });
 
+ipcMain.handle('url:post', async (_, url, headers, body) => {
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body
+    });
+    if (!response.ok) {
+      return { ok: false, error: response.statusText };
+    }
+    const data = await response.json();
+    return { ok: true, data };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  }
+});
+
 // ─── IPC: Widget ──────────────────────────────────────────────────────────────
 ipcMain.handle('widget:open', () => {
   if (widgetWindow) { widgetWindow.show(); return; }
@@ -236,9 +304,10 @@ ipcMain.handle('widget:open', () => {
   widgetWindow.on('closed', () => { widgetWindow = null; });
 });
 ipcMain.handle('widget:close', () => { widgetWindow?.close(); widgetWindow = null; });
-ipcMain.on('widget:update', (_, text) => widgetWindow?.webContents.send('widget:onUpdate', text));
+ipcMain.on('widget:update', (_, data) => widgetWindow?.webContents.send('widget:onUpdate', data));
 ipcMain.on('widget:setOpacity', (_, opacity) => widgetWindow?.setOpacity(opacity));
 ipcMain.on('widget:setIgnoreMouseEvents', (_, ignore) => widgetWindow?.setIgnoreMouseEvents(ignore, { forward: true }));
+ipcMain.on('widget:forceAnswer', () => mainWindow?.webContents.send('shortcut:generate-answer'));
 
 // ─── IPC: License ─────────────────────────────────────────────────────────────
 async function getMachineId() {
@@ -254,4 +323,7 @@ async function getMachineId() {
 }
 ipcMain.handle('license:getMachineId', () => getMachineId());
 ipcMain.handle('license:verify', async (_, licenseKey) => ({ machineId: await getMachineId(), licenseKey }));
+ipcMain.handle('app:getSources', async () => {
+  return await desktopCapturer.getSources({ types: ['screen', 'window'], fetchWindowIcons: false });
+});
 ipcMain.handle('ping', () => 'pong');

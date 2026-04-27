@@ -23,6 +23,7 @@ export interface Answer {
   id: string;
   session_id: string;
   trigger_transcript_id: string;
+  question_text: string;
   generated_text: string;
   mode: string;
   created_at: string;

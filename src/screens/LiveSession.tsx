@@ -23,6 +23,7 @@ export function LiveSession() {
   const audioMic = useRef<AudioRecorder | null>(null);
   const autoAnswerTimer = useRef<NodeJS.Timeout | null>(null);
   const questionBufferRef = useRef<string[]>([]);
+  const lastAnswerTime = useRef<number>(0);
 
   useEffect(() => {
     if ((window as any).electronAPI) {
@@ -40,20 +41,34 @@ export function LiveSession() {
           try {
             const session = await (window as any).electronAPI.cloud.getAuthSession();
             if (session?.access_token) {
-              // Fetch proxy config from web app
-              const res = await fetch('https://project-vw750.vercel.app/api/desktop/config', {
+              console.log('[LiveSession] Attempting to fetch config from project-vw750.vercel.app...');
+              let res = await fetch('https://project-vw750.vercel.app/api/desktop/config', {
                 headers: { 'Authorization': `Bearer ${session.access_token}` }
+              }).catch(err => {
+                console.warn('[LiveSession] Primary domain failed, trying fallback...', err);
+                return fetch('https://mocking-bird-ai-web.vercel.app/api/desktop/config', {
+                  headers: { 'Authorization': `Bearer ${session.access_token}` }
+                });
               });
+
+              console.log('[LiveSession] Proxy Response Status:', res.status);
+              
               if (res.ok) {
                 const config = await res.json();
-                dgKey = config.deepgram_key;
-                // Use JWT for OpenAI proxy
-                oaKey = `ey-${session.access_token}`; // Prefix so we know it's a proxy token
+                const receivedKey = String(config.deepgram_key || '').trim();
+                console.log('[LiveSession] Proxy Data Received, key length:', receivedKey.length);
+                
+                if (receivedKey.length < 5) {
+                  alert(`Warning: The server responded, but the Deepgram Key is empty or too short (Length: ${receivedKey.length}). Please check your Vercel Environment Variables.`);
+                }
+                
+                dgKey = receivedKey.replace(/["']/g, '');
+                oaKey = `ey-${session.access_token}`;
                 console.log('[LiveSession] Cloud proxy keys loaded successfully');
               } else {
                 const errBody = await res.text().catch(() => 'No body');
                 console.error(`[LiveSession] Cloud proxy returned ${res.status}:`, errBody);
-                alert(`Failed to connect to Cloud AI Proxy (Status: ${res.status}). Please check your internet connection or try re-signing in.`);
+                alert(`Cloud AI Proxy Error (Status: ${res.status}). Error: ${errBody}`);
               }
             } else {
               console.error('[LiveSession] No auth session/access_token found. User may need to re-login.');
@@ -65,8 +80,10 @@ export function LiveSession() {
           }
         } else if (hasLocalKeys) {
           console.log('[LiveSession] Using local API keys (Lifetime mode)');
-        } else {
+        } else if (!state.cloudUser) {
           console.warn('[LiveSession] No API keys found and no cloud user. AI features will not work.');
+        } else {
+          console.warn('[LiveSession] Cloud user detected but failed to load proxy config. User may need to re-login.');
         }
         
         const lang = currentSession?.language || 'en';
@@ -75,13 +92,35 @@ export function LiveSession() {
         llm.current = new OpenAIProvider(oaKey || 'mock_key');
         setKeysReady(true);
       };
-      loadKeys();
+      if (!keysReady) {
+        loadKeys();
+      }
       (window as any).electronAPI.widget.open();
-    }
-    return () => { if (autoAnswerTimer.current) clearTimeout(autoAnswerTimer.current); };
-  }, []);
 
-  // Session timer
+      (window as any).electronAPI.app.onShortcut('shortcut:toggle-session', () => {
+        toggleRecording();
+      });
+
+      (window as any).electronAPI.app.onShortcut('shortcut:generate-answer', () => {
+        handleAnswerNow();
+      });
+
+      (window as any).electronAPI.app.onShortcut('shortcut:clear-transcript', () => {
+        const { clearTranscripts } = useStore.getState();
+        clearTranscripts();
+        if ((window as any).electronAPI) (window as any).electronAPI.widget.update('Waiting for AI suggestions...');
+      });
+    }
+    return () => { 
+      if (autoAnswerTimer.current) clearTimeout(autoAnswerTimer.current);
+      if ((window as any).electronAPI) {
+        (window as any).electronAPI.app.removeShortcutListeners('shortcut:toggle-session');
+        (window as any).electronAPI.app.removeShortcutListeners('shortcut:generate-answer');
+        (window as any).electronAPI.app.removeShortcutListeners('shortcut:clear-transcript');
+      }
+    };
+  }, [isRecording]);
+
   useEffect(() => {
     if (isRecording) {
       timerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
@@ -108,7 +147,14 @@ export function LiveSession() {
       if (autoAnswerTimer.current) clearTimeout(autoAnswerTimer.current);
       questionBufferRef.current = [];
     } else {
-      await Promise.all([sttSystem.current.connect(), sttMic.current.connect()]);
+      try {
+        await Promise.all([sttSystem.current.connect(), sttMic.current.connect()]);
+      } catch (err: any) {
+        console.error('Failed to connect to Deepgram:', err);
+        alert(`Transcription Connection Error: ${err.message}. Ensure your API keys are valid.`);
+        return;
+      }
+      
       let ongoingSysId = Date.now().toString() + '-sys';
       let ongoingMicId = Date.now().toString() + '-mic';
 
@@ -116,33 +162,64 @@ export function LiveSession() {
         addTranscript({ id: ongoingSysId, session_id: currentSession!.id, speaker: 'Interviewer', text, start_time: Date.now(), end_time: Date.now(), is_final: isFinal });
         if (isFinal) {
           ongoingSysId = Date.now().toString() + '-sys';
-          
-          // Fragmentation fix: Buffer the text and check for punctuation
-          questionBufferRef.current.push(text.trim());
-          const endsCleanly = /[?.!]$/.test(text.trim());
+          const trimmed = text.trim();
+          if (!trimmed) return;
 
-          if (autoAnswerTimer.current) clearTimeout(autoAnswerTimer.current);
-
-          const fireAnswer = () => {
-            const fullQuestion = questionBufferRef.current.join(' ');
-            questionBufferRef.current = []; // Clear for next round
-            if (fullQuestion.length > 15) {
-              handleAnswerNow(fullQuestion);
-            }
+          // --- DEDUP: skip if this text is very similar to the last buffered entry ---
+          const lastEntry = questionBufferRef.current[questionBufferRef.current.length - 1] || '';
+          const isSimilar = (a: string, b: string) => {
+            if (!a || !b) return false;
+            const shorter = a.length < b.length ? a : b;
+            const longer = a.length < b.length ? b : a;
+            return longer.toLowerCase().includes(shorter.toLowerCase().slice(0, Math.max(10, shorter.length * 0.6)));
           };
-
-          if (endsCleanly) {
-            fireAnswer();
-          } else {
-            autoAnswerTimer.current = setTimeout(fireAnswer, 5000);
+          if (isSimilar(lastEntry, trimmed)) {
+            console.log('[AutoAnswer] Duplicate skipped:', trimmed);
+            // Still reset the timer (interviewer is still talking)
+            if (autoAnswerTimer.current) clearTimeout(autoAnswerTimer.current);
+            autoAnswerTimer.current = setTimeout(fireAutoAnswer, 7000);
+            return;
           }
+
+          questionBufferRef.current.push(trimmed);
+          console.log('[AutoAnswer] Buffered:', questionBufferRef.current);
+
+          // Reset debounce timer on every new fragment
+          if (autoAnswerTimer.current) clearTimeout(autoAnswerTimer.current);
+          autoAnswerTimer.current = setTimeout(fireAutoAnswer, 7000);
         }
       });
+
+      function fireAutoAnswer() {
+        const fullQuestion = questionBufferRef.current.join(' ');
+        console.log('[AutoAnswer] Timer fired. Buffer:', fullQuestion);
+
+        // --- COOLDOWN: don't auto-generate if we just generated an answer ---
+        const cooldown = 20000; // 20 seconds
+        if (Date.now() - lastAnswerTime.current < cooldown) {
+          console.log('[AutoAnswer] Cooldown active — skipping. Try "Force Answer" instead.');
+          questionBufferRef.current = [];
+          return;
+        }
+
+        // --- QUESTION DETECTION: only fire for actual questions (has ?) ---
+        const containsQuestion = /\?/.test(fullQuestion);
+        if (fullQuestion.length > 15 && containsQuestion) {
+          console.log('[AutoAnswer] Question detected — generating answer');
+          questionBufferRef.current = [];
+          lastAnswerTime.current = Date.now();
+          handleAnswerNow(fullQuestion);
+        } else {
+          console.log('[AutoAnswer] No question detected — keeping in buffer');
+        }
+      }
 
       sttMic.current.onTranscript((text, isFinal, analytics) => {
         addTranscript({ id: ongoingMicId, session_id: currentSession!.id, speaker: 'You', text, start_time: Date.now(), end_time: Date.now(), is_final: isFinal });
         if (analytics) setMicAnalytics(prev => ({ wpm: isFinal ? analytics.wpm : prev.wpm, fillers: prev.fillers + analytics.fillers }));
-        if (isFinal) ongoingMicId = Date.now().toString() + '-mic';
+        if (isFinal) {
+          ongoingMicId = Date.now().toString() + '-mic';
+        }
       });
 
       audioSystem.current = new AudioRecorder(data => sttSystem.current!.sendAudio(data), 'system');
@@ -161,16 +238,25 @@ export function LiveSession() {
     }
 
     setIsGenerating(true);
-    if ((window as any).electronAPI) (window as any).electronAPI.widget.update('Generating answer...');
+    const questionToUse = specificQuestion || (freshTranscripts.length > 0 ? freshTranscripts[freshTranscripts.length - 1].text : 'Tell me about yourself.');
+    
+    if ((window as any).electronAPI) (window as any).electronAPI.widget.update({ text: 'Generating answer...', question: questionToUse });
 
-    const question = specificQuestion || (freshTranscripts.length > 0 ? freshTranscripts[freshTranscripts.length - 1].text : 'Tell me about yourself.');
     const resumeText = freshProfile?.resume_text || '';
 
-    const prompt = buildPrompt(resumeText, freshSession.job_description, freshTranscripts.slice(-5).map(t => t.text), question, freshSession.interview_type as any, freshSession.language, freshDocs);
-    const generated = await llm.current.generateAnswer(question, prompt);
+    const prompt = buildPrompt(resumeText, freshSession.job_description, freshTranscripts.slice(-5).map(t => t.text), questionToUse, freshSession.interview_type as any, freshSession.language, freshDocs);
+    const generated = await llm.current.generateAnswer(questionToUse, prompt);
 
-    if ((window as any).electronAPI) (window as any).electronAPI.widget.update(generated);
-    const newAnswer = { id: Date.now().toString(), session_id: freshSession.id, trigger_transcript_id: freshTranscripts[freshTranscripts.length - 1]?.id || 'none', generated_text: generated, mode: 'Concise', created_at: new Date().toISOString() };
+    if ((window as any).electronAPI) (window as any).electronAPI.widget.update({ text: generated, question: questionToUse });
+    const newAnswer = { 
+      id: Date.now().toString(), 
+      session_id: freshSession.id, 
+      trigger_transcript_id: freshTranscripts[freshTranscripts.length - 1]?.id || 'none', 
+      question_text: questionToUse,
+      generated_text: generated, 
+      mode: 'Concise', 
+      created_at: new Date().toISOString() 
+    };
     addAnswer(newAnswer);
     setIsGenerating(false);
     if ((window as any).electronAPI) (window as any).electronAPI.db.saveAnswer(newAnswer);
@@ -298,29 +384,90 @@ export function LiveSession() {
                 <div style={{ fontSize: '0.82rem', maxWidth: 300 }}>AI answers will appear here automatically when the interviewer asks a question</div>
               </div>
             )}
-            {answers.map((ans, i) => (
-              <div key={i} style={{ background: 'rgba(167,139,250,0.05)', border: '1px solid rgba(167,139,250,0.15)', borderRadius: 12, overflow: 'hidden' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.625rem 1rem', borderBottom: '1px solid rgba(167,139,250,0.1)', background: 'rgba(167,139,250,0.05)' }}>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(167,139,250,0.6)' }}>✦ {ans.mode.toUpperCase()} ANSWER #{answers.length - i}</span>
-                  <button onClick={() => copyAnswer(ans.generated_text, i)}
-                    style={{ padding: '0.2rem 0.6rem', borderRadius: 5, border: `1px solid ${copyIdx === i ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)'}`, background: copyIdx === i ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.04)', color: copyIdx === i ? '#22c55e' : 'rgba(255,255,255,0.35)', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer' }}>
-                    {copyIdx === i ? '✓ Copied' : '📋 Copy'}
-                  </button>
-                </div>
-                <div style={{ padding: '1rem', fontSize: '0.875rem', lineHeight: 1.8, color: 'rgba(255,255,255,0.85)' }}>
-                  <div className="prose prose-sm dark:prose-invert">
-                    <ReactMarkdown>{ans.generated_text}</ReactMarkdown>
+
+            {/* Latest answer — displayed prominently */}
+            {answers.length > 0 && (() => {
+              const latest = answers[0];
+              return (
+                <div style={{ 
+                  background: 'rgba(167,139,250,0.08)', 
+                  border: '1px solid rgba(167,139,250,0.2)', 
+                  borderRadius: 12, 
+                  overflow: 'hidden',
+                  animation: 'fadeIn 0.6s ease-out forwards'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.625rem 1rem', borderBottom: '1px solid rgba(167,139,250,0.1)', background: 'rgba(167,139,250,0.06)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.1em', color: '#a78bfa' }}>LATEST ANSWER</span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)', lineHeight: 1.3 }}>{latest.question_text}</span>
+                    </div>
+                    <button onClick={() => copyAnswer(latest.generated_text, 0)}
+                      style={{ padding: '0.2rem 0.6rem', borderRadius: 5, border: `1px solid ${copyIdx === 0 ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)'}`, background: copyIdx === 0 ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.04)', color: copyIdx === 0 ? '#22c55e' : 'rgba(255,255,255,0.35)', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                      {copyIdx === 0 ? '✓ Copied' : '📋 Copy'}
+                    </button>
+                  </div>
+                  <div style={{ padding: '1.25rem', fontSize: '0.9rem', lineHeight: 1.8, color: 'rgba(255,255,255,0.9)' }}>
+                    <div className="prose prose-sm dark:prose-invert">
+                      <ReactMarkdown>{latest.generated_text}</ReactMarkdown>
+                    </div>
                   </div>
                 </div>
+              );
+            })()}
+
+            {/* Older answers — compact, collapsed by default */}
+            {answers.length > 1 && (
+              <div>
+                <div style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.2)', padding: '0.5rem 0', marginBottom: '0.25rem' }}>
+                  PREVIOUS ({answers.length - 1})
+                </div>
+                {answers.slice(1).map((ans, i) => {
+                  const realIdx = i + 1;
+                  return (
+                    <details key={realIdx} style={{ marginBottom: '0.5rem' }}>
+                      <summary style={{ 
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '0.5rem 0.75rem', borderRadius: 8,
+                        background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+                        cursor: 'pointer', listStyle: 'none', fontSize: '0.75rem',
+                        color: 'rgba(255,255,255,0.5)', fontWeight: 500
+                      }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.08em', color: 'rgba(167,139,250,0.35)', minWidth: 16 }}>#{answers.length - realIdx}</span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 350 }}>{ans.question_text}</span>
+                        </span>
+                        <button onClick={(e) => { e.stopPropagation(); copyAnswer(ans.generated_text, realIdx); }}
+                          style={{ padding: '0.15rem 0.5rem', borderRadius: 4, border: `1px solid ${copyIdx === realIdx ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)'}`, background: copyIdx === realIdx ? 'rgba(34,197,94,0.1)' : 'transparent', color: copyIdx === realIdx ? '#22c55e' : 'rgba(255,255,255,0.25)', fontSize: '0.62rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                          {copyIdx === realIdx ? '✓' : '📋'}
+                        </button>
+                      </summary>
+                      <div style={{ padding: '0.75rem 1rem', fontSize: '0.82rem', lineHeight: 1.7, color: 'rgba(255,255,255,0.75)', background: 'rgba(255,255,255,0.01)', borderRadius: '0 0 8px 8px', borderLeft: '2px solid rgba(167,139,250,0.15)', marginTop: 2 }}>
+                        <div className="prose prose-sm dark:prose-invert">
+                          <ReactMarkdown>{ans.generated_text}</ReactMarkdown>
+                        </div>
+                      </div>
+                    </details>
+                  );
+                })}
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
 
       <style>{`
         @keyframes pulse { 0%, 100% { opacity: 0.3; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
+      {/* Debug Status Bar */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '4px 12px', background: 'rgba(0,0,0,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '1rem', fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)', pointerEvents: 'none', zIndex: 100 }}>
+        <span>MIC: {audioMic.current ? `ACTIVE (${audioMic.current.getVolume()})` : 'OFF'}</span>
+        <span>SYS: {audioSystem.current ? `ACTIVE (${audioSystem.current.getVolume()})` : 'OFF'}</span>
+        <span>STT: {sttSystem.current ? `${sttSystem.current.getStats().sent} (S:${sttSystem.current.getStats().state}) ${sttSystem.current.getStats().error || ''}` : 'OFF'}</span>
+        <span>REC: {isRecording ? 'ON' : 'OFF'}</span>
+        <button onClick={() => window.location.reload()} style={{ pointerEvents: 'auto', background: 'none', border: 'none', color: '#a78bfa', textDecoration: 'underline', cursor: 'pointer' }}>Re-Sync</button>
+        <span style={{ marginLeft: 'auto' }}>SESS: {currentSession?.id?.slice(0,5)}</span>
+      </div>
     </div>
   );
 }

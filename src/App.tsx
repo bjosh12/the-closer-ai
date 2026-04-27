@@ -47,6 +47,14 @@ function App() {
           if (isNew) setWhatsNew({ version });
         }
       );
+
+      // ── STEP 3: Shortcut Listeners ──────────────────────────────────────
+      (window as any).electronAPI.app.onShortcut('shortcut:open-settings', () => {
+        setCurrentView('settings');
+      });
+      (window as any).electronAPI.app.onShortcut('shortcut:open-history', () => {
+        setCurrentView('history');
+      });
     } else {
       // Running in browser (dev without Electron) — skip straight to login
       setIsBooting(false);

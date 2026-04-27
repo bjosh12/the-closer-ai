@@ -20,6 +20,7 @@ interface AppState {
   addTranscript: (transcript: Transcript) => void;
   addAnswer: (answer: Answer) => void;
   setDocuments: (docs: any[]) => void;
+  clearTranscripts: () => void;
   clearSessionData: () => void;
 }
 
@@ -50,5 +51,6 @@ export const useStore = create<AppState>((set) => ({
   }),
   addAnswer: (answer) => set((state) => ({ answers: [...state.answers, answer] })),
   setDocuments: (docs) => set({ documents: docs }),
+  clearTranscripts: () => set({ transcripts: [], answers: [] }),
   clearSessionData: () => set({ currentSession: null, transcripts: [], answers: [] }),
 }));

@@ -51,23 +51,35 @@ export class OpenAIProvider implements LLMProvider {
       const token = isProxy ? this.apiKey.substring(3) : this.apiKey;
       const url = isProxy ? 'https://project-vw750.vercel.app/api/desktop/openai' : 'https://api.openai.com/v1/chat/completions';
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: prompt }
-          ],
-          max_tokens: 500,
-          temperature: 0.7,
-        })
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      };
+
+      const bodyStr = JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: prompt }
+        ],
+        max_tokens: 500,
+        temperature: 0.7,
       });
 
-      const data = await response.json();
+      let data;
+      if ((window as any).electronAPI && isProxy) {
+        const res = await (window as any).electronAPI.url.post(url, headers, bodyStr);
+        if (!res.ok) throw new Error(res.error || 'Failed to fetch');
+        data = res.data;
+      } else {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: bodyStr
+        });
+        if (!response.ok) throw new Error(response.statusText);
+        data = await response.json();
+      }
+
       return data.choices[0].message.content;
     } catch (error: any) {
       return `Error generating scorecard: ${error.message}`;
@@ -84,28 +96,36 @@ export class OpenAIProvider implements LLMProvider {
       const token = isProxy ? this.apiKey.substring(3) : this.apiKey;
       const url = isProxy ? 'https://project-vw750.vercel.app/api/desktop/openai' : 'https://api.openai.com/v1/chat/completions';
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: question }
-          ],
-          max_tokens: 500,
-          temperature: 0.7,
-        })
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      };
+
+      const bodyStr = JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: question }
+        ],
+        max_tokens: 500,
+        temperature: 0.7,
       });
 
-      if (!response.ok) {
-        throw new Error(`OpenAI API Error: ${response.statusText}`);
+      let data;
+      if ((window as any).electronAPI && isProxy) {
+        const res = await (window as any).electronAPI.url.post(url, headers, bodyStr);
+        if (!res.ok) throw new Error(`OpenAI API Error: ${res.error}`);
+        data = res.data;
+      } else {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: bodyStr
+        });
+        if (!response.ok) throw new Error(`OpenAI API Error: ${response.statusText}`);
+        data = await response.json();
       }
 
-      const data = await response.json();
       return data.choices[0].message.content;
     } catch (error: any) {
       console.error('LLM Generation Error:', error);
@@ -115,11 +135,11 @@ export class OpenAIProvider implements LLMProvider {
 }
 
 export function buildPrompt(
-  resume: string, 
-  jd: string, 
-  recentTranscripts: string[], 
+  resume: string,
+  jd: string,
+  recentTranscripts: string[],
   question: string,
-  interviewType: 'behavioral' | 'technical' = 'behavioral',
+  _interviewType: 'behavioral' | 'technical' = 'behavioral',
   language: string = 'en',
   documents: { title: string; content: string }[] = []
 ): string {
@@ -128,31 +148,45 @@ export function buildPrompt(
   };
   const targetLang = langMap[language] || 'English';
 
-  let instructions = `
-You are an expert interview coach generating a live, real-time suggested answer for a candidate during a video interview.
-CRITICAL INSTRUCTIONS:
-1. Provide a clear, well-structured answer. When asked about past experiences or challenges, use a conversational version of the STAR method (Situation, Task, Action, Result).
-2. You MUST pull specific, concrete examples and metrics directly from the Candidate's Resume to support your statements. Do not be vague.
-3. Your answer MUST sound 100% human, casual, and conversational. Do NOT use complex vocabulary, corporate jargon, or typical AI buzzwords. Write the response exactly as a normal person would speak it out loud.
-4. Keep the delivery concise and punchy. Avoid repeating phrases and do not ramble, but ensure the structural narrative and concrete examples remain fully intact.
-You must generate the final spoken answer in ${targetLang}.
-`;
-
-  if (interviewType === 'technical') {
-    instructions = `
-You are an expert technical interview coach. The candidate is being asked a coding or system design question.
-CRITICAL INSTRUCTION: Generate a structured technical answer. Your output MUST include:
-1. The Core Algorithm / Approach (Concise explanation)
-2. Time and Space Complexity
-3. Edge Cases to mention
-You must respond in ${targetLang}. Use markdown for code snippets.
-`;
-  }
-
   return `
-${instructions}
+You are an invisible interview coach whispering in a candidate's ear during a live interview. Your job is to give them a natural-sounding answer they can adapt and say in their own words.
 
-Ground your answer in the candidate's resume and the job description.
+IMPORTANT: Write how real people actually talk in interviews. Not how AI writes. Not how a LinkedIn post sounds. How a confident, prepared person actually speaks out loud to another human.
+
+RULES:
+- Use the candidate's real experience from their resume, but phrase it the way they'd actually say it out loud
+- Keep each point to ONE short line they can glance at mid-conversation
+- No corporate jargon. No filler. No "I'm passionate about..." or "I thrive in..." — nobody actually talks like that
+- 3 points max. Less is more.
+
+FORMAT (follow this exactly):
+
+**🎯 Start with:** [A casual, natural opening sentence — the kind of thing you'd actually say]
+
+**📌 Key points:**
+- [Something specific from their resume, phrased casually]
+- [Another specific thing, focused on what they actually did or achieved]
+- [Connect it back to why they're here / this role]
+
+**🎬 Wrap up:** [A natural closing that sounds human, not rehearsed]
+
+EXAMPLE — if asked "Tell me about yourself":
+
+**🎯 Start with:** "Yeah, so I've been in recruiting for about four years now, mostly hospitality and healthcare..."
+
+**📌 Key points:**
+- At BroadPath I basically built out their remote healthcare hiring from the ground up
+- Then at Stratton I shifted to luxury hospitality — learned a ton about screening for culture fit
+- Been wanting to get into fintech for a while, which is what led me here
+
+**🎬 Wrap up:** "So yeah, I want to take what I've learned and bring it somewhere that's growing fast — and this seemed like the right fit."
+
+^ That's the tone. Natural, confident, sounds like a real person. Match that energy.
+
+
+### CONTEXT:
+=== Target Language ===
+${targetLang}
 
 === Job Description ===
 ${jd}
@@ -160,14 +194,14 @@ ${jd}
 === Candidate Resume ===
 ${resume}
 
-${documents.length > 0 ? `=== Knowledge Base (Supporting Documents) ===\n${documents.map(d => `Document: ${d.title}\n${d.content}`).join('\n\n')}\n` : ''}
+${documents.length > 0 ? `=== Knowledge Base ===\n${documents.map(d => `Document: ${d.title}\n${d.content}`).join('\n\n')}\n` : ''}
 
-=== Recent Conversation Context ===
+=== Recent Conversation (Last 5 mins) ===
 ${recentTranscripts.join('\n')}
 
-=== Question to Answer ===
+=== Exact Interviewer Question ===
 ${question}
 
-Provide the suggested answer below:
+Generate the response in ${targetLang} now.
 `;
 }

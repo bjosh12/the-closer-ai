@@ -171,11 +171,12 @@ export function Settings() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
               {[
                 { keys: 'Alt + C', desc: 'Show / Hide widget', works: true },
-                { keys: 'Alt + S', desc: 'Start / Stop session', works: false },
-                { keys: 'Alt + A', desc: 'Generate AI answer', works: false },
-                { keys: 'Alt + X', desc: 'Clear transcript', works: false },
-                { keys: 'Ctrl + ,', desc: 'Open Settings', works: false },
-                { keys: 'Ctrl + H', desc: 'View history', works: false },
+                { keys: 'Alt + G', desc: 'Toggle Ghost Mode', works: true },
+                { keys: 'Alt + S', desc: 'Start / Stop session', works: true },
+                { keys: 'Alt + A', desc: 'Generate AI answer', works: true },
+                { keys: 'Alt + X', desc: 'Clear transcript', works: true },
+                { keys: 'Ctrl + ,', desc: 'Open Settings', works: true },
+                { keys: 'Ctrl + H', desc: 'View history', works: true },
               ].map(({ keys, desc, works }) => (
                 <div key={keys} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '0.5rem 0.75rem', opacity: works ? 1 : 0.45 }}>
                   <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>{desc}{!works && <span style={{ fontSize: '0.65rem', color: '#f59e0b', marginLeft: 4 }}>(soon)</span>}</span>
@@ -183,7 +184,7 @@ export function Settings() {
                 </div>
               ))}
             </div>
-            <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', marginTop: '0.5rem' }}>Only <strong style={{ color: 'rgba(255,255,255,0.35)' }}>Alt + C</strong> is active. Others are global shortcuts coming in the next update.</p>
+            <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', marginTop: '0.5rem' }}>All shortcuts are <strong style={{ color: '#22c55e' }}>Global</strong>. They work even when the app is minimized or hidden.</p>
           </div>
 
           {/* Preferences Card */}
@@ -226,6 +227,20 @@ export function Settings() {
                   You'll need to sign in again or re-activate your license.
                 </p>
               </div>
+
+              {/* Full Exit */}
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>Quit Application</div>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', marginTop: '0.15rem' }}>Fully close the app (removes from system tray)</div>
+                </div>
+                <button
+                  onClick={() => { if ((window as any).electronAPI) (window as any).electronAPI.app.quit(); }}
+                  style={{ padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Exit App
+                </button>
+              </div>
             </div>
           </div>
 
@@ -247,25 +262,38 @@ export function Settings() {
                 </div>
                 {lastChecked && <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)' }}>Last checked: {lastChecked.toLocaleTimeString()}</span>}
               </div>
-              <button
-                disabled={updateChecking}
-                onClick={async () => {
-                  setUpdateChecking(true);
-                  setUpdateStatus('checking');
-                  setLastChecked(new Date());
-                  await (window as any).electronAPI?.app.checkForUpdates();
-                  // Give it 3s then reset spinner (actual result comes via onUpdateStatus)
-                  setTimeout(() => setUpdateChecking(false), 3000);
-                }}
-                style={{ padding: '0.4rem 0.875rem', background: updateChecking ? 'rgba(167,139,250,0.15)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: updateChecking ? '#a78bfa' : 'rgba(255,255,255,0.6)', fontSize: '0.75rem', fontWeight: 600, cursor: updateChecking ? 'default' : 'pointer', transition: 'all 0.2s' }}
-              >
-                {updateChecking ? '⟳ Checking...' : 'Check for Updates'}
-              </button>
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                {updateStatus === 'downloaded' && (
+                  <button
+                    onClick={() => { if ((window as any).electronAPI) (window as any).electronAPI.app.checkForUpdates(); /* This will trigger quitAndInstall in main if already ready */ }}
+                    style={{ padding: '0.4rem 1rem', background: '#22c55e', border: 'none', borderRadius: 8, color: '#fff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(34,197,94,0.3)' }}
+                  >
+                    Install & Restart Now
+                  </button>
+                )}
+                <button
+                  disabled={updateChecking}
+                  onClick={async () => {
+                    setUpdateChecking(true);
+                    setUpdateStatus('checking');
+                    setLastChecked(new Date());
+                    await (window as any).electronAPI?.app.checkForUpdates();
+                    // Give it 3s then reset spinner (actual result comes via onUpdateStatus)
+                    setTimeout(() => setUpdateChecking(false), 3000);
+                  }}
+                  style={{ padding: '0.4rem 0.875rem', background: updateChecking ? 'rgba(167,139,250,0.15)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: updateChecking ? '#a78bfa' : 'rgba(255,255,255,0.6)', fontSize: '0.75rem', fontWeight: 600, cursor: updateChecking ? 'default' : 'pointer', transition: 'all 0.2s' }}
+                >
+                  {updateChecking ? '⟳ Checking...' : 'Check for Updates'}
+                </button>
+              </div>
             </div>
-          </div>
+            <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', marginTop: '0.8rem' }}>
+              Updates are usually automatic, but you can force a check here. Version info is pulled directly from the current build.
+            </p>
 
         </div>
       </div>
     </div>
+  </div>
   );
 }

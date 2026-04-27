@@ -15,35 +15,37 @@ export function Scorecard() {
 
     const generate = async () => {
       let oaKey = 'mock_key';
+      
       if ((window as any).electronAPI) {
-        oaKey = await (window as any).electronAPI.store.get('OPENAI_API_KEY');
+        // 1. Try local key first (Lifetime mode)
+        const localKey = await (window as any).electronAPI.store.get('OPENAI_API_KEY');
+        const hasLocalKey = localKey && localKey !== 'mock_key';
         
-        // If no local key, try cloud proxy
-        const hasLocalKey = oaKey && oaKey !== 'mock_key';
-        if (!hasLocalKey) {
+        if (hasLocalKey) {
+          oaKey = localKey;
+        } else {
+          // 2. Fallback to Cloud Proxy if signed in
           const state = useStore.getState();
           if (state.cloudUser) {
             try {
               const session = await (window as any).electronAPI.cloud.getAuthSession();
               if (session?.access_token) {
-                const res = await fetch('https://project-vw750.vercel.app/api/desktop/openai', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-                  body: JSON.stringify({ model: 'gpt-4o-mini', messages: [], max_tokens: 1 })
-                });
-                if (res.ok || res.status === 401) {
-                  // Proxy is reachable — use proxy token
-                  oaKey = `ey-${session.access_token}`;
-                }
+                oaKey = `ey-${session.access_token}`;
               }
             } catch (e) {
-              console.error('[Scorecard] Cloud proxy check failed:', e);
+              console.error('[Scorecard] Cloud session retrieval failed:', e);
             }
           }
         }
       }
 
-      const llm = new OpenAIProvider(oaKey || 'mock_key');
+      if (oaKey === 'mock_key') {
+        setScorecard("Error: API Key missing. Please set your OpenAI API key in Settings or ensure you are signed in to your Cloud account.");
+        setIsGenerating(false);
+        return;
+      }
+
+      const llm = new OpenAIProvider(oaKey);
       const result = await llm.generateScorecard(
         profile.resume_text,
         currentSession.job_description,

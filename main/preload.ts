@@ -28,16 +28,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   url: {
     fetch: (url: string) => ipcRenderer.invoke('url:fetch', url),
+    post: (url: string, headers: any, body: any) => ipcRenderer.invoke('url:post', url, headers, body),
   },
   widget: {
     open: () => ipcRenderer.invoke('widget:open'),
     close: () => ipcRenderer.invoke('widget:close'),
-    update: (text: string) => ipcRenderer.send('widget:update', text),
-    onUpdate: (callback: (text: string) => void) => {
-      ipcRenderer.on('widget:onUpdate', (_, text) => callback(text));
+    update: (data: { text: string; question?: string }) => ipcRenderer.send('widget:update', data),
+    onUpdate: (callback: (data: { text: string; question?: string }) => void) => {
+      ipcRenderer.on('widget:onUpdate', (_, data) => callback(data));
     },
     setOpacity: (opacity: number) => ipcRenderer.send('widget:setOpacity', opacity),
     setIgnoreMouseEvents: (ignore: boolean) => ipcRenderer.send('widget:setIgnoreMouseEvents', ignore),
+    onToggleGhost: (callback: () => void) => {
+      ipcRenderer.on('widget:toggleGhost', () => callback());
+    },
+    forceAnswer: () => ipcRenderer.send('widget:forceAnswer')
   },
   windowAPI: {
     toggleMaximize: () => ipcRenderer.send('window:toggle-maximize')
@@ -72,5 +77,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onUpdateStatus: (callback: (status: string) => void) => {
       ipcRenderer.on('app:updateStatus', (_, status) => callback(status));
     },
+    onShortcut: (channel: string, callback: () => void) => {
+      const validChannels = [
+        'shortcut:toggle-session', 
+        'shortcut:generate-answer', 
+        'shortcut:clear-transcript', 
+        'shortcut:open-settings', 
+        'shortcut:open-history'
+      ];
+      if (validChannels.includes(channel)) {
+        ipcRenderer.on(channel, () => callback());
+      }
+    },
+    removeShortcutListeners: (channel: string) => {
+      ipcRenderer.removeAllListeners(channel);
+    },
+    quit: () => ipcRenderer.send('app:quit'),
+    getSources: () => ipcRenderer.invoke('app:getSources'),
   },
 });

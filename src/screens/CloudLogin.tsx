@@ -184,7 +184,7 @@ export function CloudLogin() {
 
   const inputGroupStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '0.85rem' };
   const labelStyle = { display: 'block', fontSize: '0.7rem', fontWeight: 700, color: 'rgba(255,255,255,0.4)', marginBottom: '0.35rem', textTransform: 'uppercase' as const };
-  const inputStyle = { width: '100%', padding: '0.7rem 0.875rem', background: '#111118', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, color: '#fff', outline: 'none', fontSize: '0.85rem', boxSizing: 'border-box' as const };
+  const inputStyle = { width: '100%', padding: '0.7rem 0.875rem', background: '#111118', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, color: '#fff', outline: 'none', fontSize: '0.85rem', boxSizing: 'border-box' as const, WebkitAppRegion: 'no-drag' as any };
 
   return (
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'radial-gradient(circle at center, #1a1a2e 0%, #0a0a0f 100%)', padding: '1rem', boxSizing: 'border-box' }}>
