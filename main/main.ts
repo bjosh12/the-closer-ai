@@ -15,6 +15,12 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let widgetWindow: BrowserWindow | null = null;
 
+// Set the App User Model ID so Windows shows "Mocking Bird AI" instead of "Electron"
+// in Toast Notifications and Privacy Settings (Microphone/Screen Capture).
+if (process.platform === 'win32') {
+  app.setAppUserModelId('Mocking Bird AI');
+}
+
 // ─── Auto Updater ─────────────────────────────────────────────────────────────
 function setupAutoUpdater() {
   autoUpdater.autoDownload = true;
