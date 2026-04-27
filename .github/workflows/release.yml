@@ -25,14 +25,11 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build/release Electron app
-        uses: samuelmeuli/action-electron-builder@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          release: true
-          # Publish as non-draft so release is visible on GitHub Releases page
-          args: --publish always
+      - name: Build and Publish Electron app
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
           EP_DRAFT: false
           EP_PRE_RELEASE: false
+        run: |
+          npm run build -- --publish always
