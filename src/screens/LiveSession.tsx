@@ -152,13 +152,15 @@ export function LiveSession() {
       audioSystem.current = new AudioRecorder(data => sttSystem.current!.sendAudio(data), 'system');
       audioMic.current = new AudioRecorder(data => sttMic.current!.sendAudio(data), 'mic');
       
-      const [sysOk, micOk] = await Promise.all([
+      const [sysResult, micResult] = await Promise.all([
         audioSystem.current.start(), 
         audioMic.current.start()
       ]);
 
-      if (!sysOk || !micOk) {
-        alert("Failed to start audio capture. Please check your microphone and screen recording permissions.");
+      if (sysResult !== true || micResult !== true) {
+        const sysErr = sysResult !== true ? `System: ${sysResult}` : '';
+        const micErr = micResult !== true ? `Mic: ${micResult}` : '';
+        alert(`Failed to start audio capture.\n\n${sysErr}\n${micErr}\n\nPlease check your microphone and screen recording permissions.`);
         audioSystem.current?.stop();
         audioMic.current?.stop();
         return;

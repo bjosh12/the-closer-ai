@@ -66,9 +66,9 @@ export class AudioRecorder {
       };
 
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error starting ${this.mode} audio capture:`, error);
-      return false;
+      return error.message || String(error);
     }
   }
 
