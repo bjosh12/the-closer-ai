@@ -237,6 +237,21 @@ export function LiveSession() {
       }
 
       sttMic.current.onTranscript((text, isFinal, analytics) => {
+        // Skip mic transcripts that are echoes of the interviewer's audio through speakers
+        if (isFinal) {
+          const recentInterviewer = useStore.getState().transcripts
+            .filter(t => t.speaker === 'Interviewer' && t.is_final)
+            .slice(-3);
+          const isEcho = recentInterviewer.some(t => {
+            const a = t.text.toLowerCase().trim();
+            const b = text.toLowerCase().trim();
+            if (!a || !b) return false;
+            const shorter = a.length < b.length ? a : b;
+            const longer = a.length < b.length ? b : a;
+            return longer.includes(shorter.slice(0, Math.max(12, shorter.length * 0.7)));
+          });
+          if (isEcho) return;
+        }
         addTranscript({ id: ongoingMicId, session_id: currentSession!.id, speaker: 'You', text, start_time: Date.now(), end_time: Date.now(), is_final: isFinal });
         if (analytics) setMicAnalytics(prev => ({ wpm: isFinal ? analytics.wpm : prev.wpm, fillers: prev.fillers + analytics.fillers }));
         if (isFinal) {

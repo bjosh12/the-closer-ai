@@ -133,33 +133,34 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` };
-    const bodyStr = JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: question }
-      ],
-      max_tokens: 350,
-      temperature: 0.7,
-      stream: true,
-    });
 
     try {
       if ((window as any).electronAPI && this.isProxy) {
-        // Proxy path: main process streams chunks back via IPC
-        let full = '';
-        const result = await (window as any).electronAPI.url.postStream(
-          this.url,
-          headers,
-          bodyStr,
-          (token: string) => {
-            full += token;
-            onChunk(token, full);
-          }
-        );
-        if (!result.ok) throw new Error(result.error);
-        onDone(result.data);
+        // Proxy path: proxy server doesn't support SSE streaming, use regular request
+        const bodyStr = JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: question }
+          ],
+          max_tokens: 350,
+          temperature: 0.7,
+        });
+        const res = await (window as any).electronAPI.url.post(this.url, headers, bodyStr);
+        if (!res.ok) throw new Error(res.error || 'API Error');
+        const text = res.data.choices[0].message.content;
+        onDone(text);
       } else {
+        const bodyStr = JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: question }
+          ],
+          max_tokens: 350,
+          temperature: 0.7,
+          stream: true,
+        });
         // Direct path: browser fetch with ReadableStream
         const response = await fetch(this.url, { method: 'POST', headers, body: bodyStr });
         if (!response.ok) throw new Error(`OpenAI API Error: ${response.statusText}`);
