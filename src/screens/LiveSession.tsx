@@ -311,9 +311,10 @@ export function LiveSession() {
     // Ensure the final text is always rendered as markdown bullets regardless of model output format
     const normalizeBullets = (text: string): string => {
       const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-      const alreadyBullets = lines.every(l => l.startsWith('- ') || l.startsWith('* '));
-      if (alreadyBullets) return text;
-      return lines.map(l => `- ${l.replace(/^[-*•]\s*/, '')}`).join('\n');
+      return lines.map(l => {
+        if (l.startsWith('- ') || l.startsWith('* ')) return l;
+        return `- ${l.replace(/^[-*•]\s*/, '')}`;
+      }).join('\n');
     };
 
     await llm.current.generateAnswerStream(
