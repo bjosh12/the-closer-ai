@@ -29,6 +29,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   url: {
     fetch: (url: string) => ipcRenderer.invoke('url:fetch', url),
     post: (url: string, headers: any, body: any) => ipcRenderer.invoke('url:post', url, headers, body),
+    postStream: (url: string, headers: any, body: any, onChunk: (token: string) => void) => {
+      ipcRenderer.removeAllListeners('stream:chunk');
+      ipcRenderer.on('stream:chunk', (_, token) => onChunk(token));
+      return ipcRenderer.invoke('url:postStream', url, headers, body);
+    },
   },
   widget: {
     open: () => ipcRenderer.invoke('widget:open'),

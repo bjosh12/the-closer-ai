@@ -2,14 +2,18 @@ import { useState, useEffect } from 'react';
 import { useStore } from '@/store/useStore';
 
 export function HomeDashboard() {
-  const { 
-    setCurrentView, 
-    setCurrentSession, 
-    setProfile, 
-    setDocuments, 
-    setCloudUser, 
+  const {
+    setCurrentView,
+    setCurrentSession,
+    setProfile,
+    setDocuments,
+    setCloudUser,
     setLicensed,
-    isLicensed 
+    isLicensed,
+    selectedModel,
+    setSelectedModel,
+    extraInstructions,
+    setExtraInstructions,
   } = useStore();
   const [jobTitle, setJobTitle] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -315,6 +319,29 @@ export function HomeDashboard() {
                     <option value="fr" style={{ background: '#111118', color: '#fff' }}>🇫🇷 French</option>
                     <option value="de" style={{ background: '#111118', color: '#fff' }}>🇩🇪 German</option>
                   </select>
+                </div>
+              </div>
+
+              {/* AI Model + Extra Instructions */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={labelStyle}>AI Model</label>
+                  <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)} style={selectStyle}>
+                    <option value="gpt-4o-mini" style={{ background: '#111118', color: '#fff' }}>GPT-4o Mini · Fast · Recommended</option>
+                    <option value="gpt-4o" style={{ background: '#111118', color: '#fff' }}>GPT-4o · Smart</option>
+                    <option value="gpt-4.1-mini" style={{ background: '#111118', color: '#fff' }}>GPT-4.1 Mini · Fast</option>
+                    <option value="gpt-4.1" style={{ background: '#111118', color: '#fff' }}>GPT-4.1 · Smart</option>
+                    <option value="gpt-4-turbo" style={{ background: '#111118', color: '#fff' }}>GPT-4 Turbo · Smart</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Extra Instructions</label>
+                  <input
+                    value={extraInstructions}
+                    onChange={e => setExtraInstructions(e.target.value)}
+                    placeholder="e.g. Use everyday words so it sounds natural."
+                    style={inputStyle}
+                  />
                 </div>
               </div>
 

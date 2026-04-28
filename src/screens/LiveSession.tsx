@@ -6,7 +6,7 @@ import { DeepgramProvider } from '@/lib/stt';
 import { OpenAIProvider, buildPrompt } from '@/lib/llm';
 
 export function LiveSession() {
-  const { currentSession, transcripts, answers, addTranscript, addAnswer, setCurrentView } = useStore();
+  const { currentSession, transcripts, answers, addTranscript, addAnswer, updateLatestAnswer, setCurrentView } = useStore();
   const [isRecording, setIsRecording] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [micAnalytics, setMicAnalytics] = useState({ wpm: 0, fillers: 0 });
@@ -249,8 +249,7 @@ export function LiveSession() {
   };
 
   const handleAnswerNow = async (specificQuestion?: string) => {
-    // Always read fresh state from Zustand to avoid stale closures
-    const { profile: freshProfile, currentSession: freshSession, documents: freshDocs, transcripts: freshTranscripts } = useStore.getState();
+    const { profile: freshProfile, currentSession: freshSession, documents: freshDocs, transcripts: freshTranscripts, selectedModel, extraInstructions } = useStore.getState();
     if (!freshSession || !llm.current || !keysReady) {
       console.warn('[LiveSession] handleAnswerNow blocked: session=', !!freshSession, 'llm=', !!llm.current, 'keysReady=', keysReady);
       return;
@@ -258,27 +257,65 @@ export function LiveSession() {
 
     setIsGenerating(true);
     const questionToUse = specificQuestion || (freshTranscripts.length > 0 ? freshTranscripts[freshTranscripts.length - 1].text : 'Tell me about yourself.');
-    
+
+    const placeholderAnswer = {
+      id: Date.now().toString(),
+      session_id: freshSession.id,
+      trigger_transcript_id: freshTranscripts[freshTranscripts.length - 1]?.id || 'none',
+      question_text: questionToUse,
+      generated_text: '',
+      mode: 'Concise',
+      created_at: new Date().toISOString()
+    };
+    addAnswer(placeholderAnswer);
+
     if ((window as any).electronAPI) (window as any).electronAPI.widget.update({ text: 'Generating answer...', question: questionToUse });
 
     const resumeText = freshProfile?.resume_text || '';
+    const prompt = buildPrompt(
+      resumeText,
+      freshSession.job_description,
+      freshTranscripts.slice(-5).map(t => t.text),
+      questionToUse,
+      freshSession.interview_type as any,
+      freshSession.language,
+      freshDocs,
+      extraInstructions
+    );
 
-    const prompt = buildPrompt(resumeText, freshSession.job_description, freshTranscripts.slice(-5).map(t => t.text), questionToUse, freshSession.interview_type as any, freshSession.language, freshDocs);
-    const generated = await llm.current.generateAnswer(questionToUse, prompt);
-
-    if ((window as any).electronAPI) (window as any).electronAPI.widget.update({ text: generated, question: questionToUse });
-    const newAnswer = { 
-      id: Date.now().toString(), 
-      session_id: freshSession.id, 
-      trigger_transcript_id: freshTranscripts[freshTranscripts.length - 1]?.id || 'none', 
-      question_text: questionToUse,
-      generated_text: generated, 
-      mode: 'Concise', 
-      created_at: new Date().toISOString() 
+    // Throttle widget updates to avoid flooding IPC with every token
+    let widgetUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleWidgetUpdate = (text: string) => {
+      if (widgetUpdateTimer) return;
+      widgetUpdateTimer = setTimeout(() => {
+        widgetUpdateTimer = null;
+        if ((window as any).electronAPI) (window as any).electronAPI.widget.update({ text, question: questionToUse });
+      }, 80);
     };
-    addAnswer(newAnswer);
-    setIsGenerating(false);
-    if ((window as any).electronAPI) (window as any).electronAPI.db.saveAnswer(newAnswer);
+
+    await llm.current.generateAnswerStream(
+      questionToUse,
+      prompt,
+      selectedModel,
+      (_token, full) => {
+        updateLatestAnswer(full);
+        scheduleWidgetUpdate(full);
+      },
+      (full) => {
+        if (widgetUpdateTimer) { clearTimeout(widgetUpdateTimer); widgetUpdateTimer = null; }
+        updateLatestAnswer(full);
+        if ((window as any).electronAPI) (window as any).electronAPI.widget.update({ text: full, question: questionToUse });
+        const finalAnswer = { ...placeholderAnswer, generated_text: full };
+        setIsGenerating(false);
+        if ((window as any).electronAPI) (window as any).electronAPI.db.saveAnswer(finalAnswer);
+      },
+      (err) => {
+        if (widgetUpdateTimer) { clearTimeout(widgetUpdateTimer); widgetUpdateTimer = null; }
+        updateLatestAnswer(err);
+        if ((window as any).electronAPI) (window as any).electronAPI.widget.update({ text: err, question: questionToUse });
+        setIsGenerating(false);
+      }
+    );
   };
 
   const handleEndSession = async () => {

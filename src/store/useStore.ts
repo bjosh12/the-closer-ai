@@ -11,7 +11,9 @@ interface AppState {
   documents: { id: string; title: string; content: string; created_at: string }[];
   isLicensed: boolean;
   licenseKey: string | null;
-  
+  selectedModel: string;
+  extraInstructions: string;
+
   setCurrentView: (view: AppState['currentView']) => void;
   setProfile: (profile: Profile) => void;
   setCloudUser: (user: { id: string; email: string } | null) => void;
@@ -19,9 +21,12 @@ interface AppState {
   setCurrentSession: (session: Session) => void;
   addTranscript: (transcript: Transcript) => void;
   addAnswer: (answer: Answer) => void;
+  updateLatestAnswer: (text: string) => void;
   setDocuments: (docs: any[]) => void;
   clearTranscripts: () => void;
   clearSessionData: () => void;
+  setSelectedModel: (model: string) => void;
+  setExtraInstructions: (instructions: string) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -34,6 +39,8 @@ export const useStore = create<AppState>((set) => ({
   documents: [],
   isLicensed: false,
   licenseKey: null,
+  selectedModel: 'gpt-4o-mini',
+  extraInstructions: 'Use everyday words so it sounds natural.',
 
   setCurrentView: (view) => set({ currentView: view }),
   setProfile: (profile) => set({ profile }),
@@ -49,8 +56,16 @@ export const useStore = create<AppState>((set) => ({
     }
     return { transcripts: [...state.transcripts, transcript] };
   }),
-  addAnswer: (answer) => set((state) => ({ answers: [...state.answers, answer] })),
+  addAnswer: (answer) => set((state) => ({ answers: [answer, ...state.answers] })),
+  updateLatestAnswer: (text) => set((state) => {
+    if (state.answers.length === 0) return state;
+    const updated = [...state.answers];
+    updated[0] = { ...updated[0], generated_text: text };
+    return { answers: updated };
+  }),
   setDocuments: (docs) => set({ documents: docs }),
   clearTranscripts: () => set({ transcripts: [], answers: [] }),
   clearSessionData: () => set({ currentSession: null, transcripts: [], answers: [] }),
+  setSelectedModel: (selectedModel) => set({ selectedModel }),
+  setExtraInstructions: (extraInstructions) => set({ extraInstructions }),
 }));

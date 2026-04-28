@@ -29,7 +29,15 @@ Generate a comprehensive Scorecard for the candidate. Use the following markdown
 }
 
 export interface LLMProvider {
-  generateAnswer(prompt: string, context: string): Promise<string>;
+  generateAnswer(prompt: string, context: string, model: string): Promise<string>;
+  generateAnswerStream(
+    question: string,
+    systemPrompt: string,
+    model: string,
+    onChunk: (partial: string, full: string) => void,
+    onDone: (full: string) => void,
+    onError: (err: string) => void
+  ): Promise<void>;
   generateScorecard(resume: string, jd: string, transcripts: any[]): Promise<string>;
 }
 
@@ -40,6 +48,10 @@ export class OpenAIProvider implements LLMProvider {
     this.apiKey = apiKey;
   }
 
+  private get isProxy() { return this.apiKey.startsWith('ey-'); }
+  private get token() { return this.isProxy ? this.apiKey.substring(3) : this.apiKey; }
+  private get url() { return this.isProxy ? 'https://project-vw750.vercel.app/api/desktop/openai' : 'https://api.openai.com/v1/chat/completions'; }
+
   async generateScorecard(resume: string, jd: string, transcripts: any[]): Promise<string> {
     if (!this.apiKey || this.apiKey === 'mock_key') return "Error: API Key missing.";
 
@@ -47,35 +59,21 @@ export class OpenAIProvider implements LLMProvider {
     const prompt = buildScorecardPrompt(resume, jd, formattedTranscripts);
 
     try {
-      const isProxy = this.apiKey.startsWith('ey-');
-      const token = isProxy ? this.apiKey.substring(3) : this.apiKey;
-      const url = isProxy ? 'https://project-vw750.vercel.app/api/desktop/openai' : 'https://api.openai.com/v1/chat/completions';
-
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      };
-
+      const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` };
       const bodyStr = JSON.stringify({
         model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: prompt }
-        ],
+        messages: [{ role: 'system', content: prompt }],
         max_tokens: 500,
         temperature: 0.7,
       });
 
       let data;
-      if ((window as any).electronAPI && isProxy) {
-        const res = await (window as any).electronAPI.url.post(url, headers, bodyStr);
+      if ((window as any).electronAPI && this.isProxy) {
+        const res = await (window as any).electronAPI.url.post(this.url, headers, bodyStr);
         if (!res.ok) throw new Error(res.error || 'Failed to fetch');
         data = res.data;
       } else {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers,
-          body: bodyStr
-        });
+        const response = await fetch(this.url, { method: 'POST', headers, body: bodyStr });
         if (!response.ok) throw new Error(response.statusText);
         data = await response.json();
       }
@@ -86,42 +84,30 @@ export class OpenAIProvider implements LLMProvider {
     }
   }
 
-  async generateAnswer(question: string, systemPrompt: string): Promise<string> {
+  async generateAnswer(question: string, systemPrompt: string, model: string = 'gpt-4o-mini'): Promise<string> {
     if (!this.apiKey || this.apiKey === 'mock_key') {
       return "Error: Please add your OpenAI API Key in Settings to generate answers.";
     }
 
     try {
-      const isProxy = this.apiKey.startsWith('ey-');
-      const token = isProxy ? this.apiKey.substring(3) : this.apiKey;
-      const url = isProxy ? 'https://project-vw750.vercel.app/api/desktop/openai' : 'https://api.openai.com/v1/chat/completions';
-
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      };
-
+      const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` };
       const bodyStr = JSON.stringify({
-        model: 'gpt-4o-mini',
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: question }
         ],
-        max_tokens: 500,
+        max_tokens: 350,
         temperature: 0.7,
       });
 
       let data;
-      if ((window as any).electronAPI && isProxy) {
-        const res = await (window as any).electronAPI.url.post(url, headers, bodyStr);
+      if ((window as any).electronAPI && this.isProxy) {
+        const res = await (window as any).electronAPI.url.post(this.url, headers, bodyStr);
         if (!res.ok) throw new Error(`OpenAI API Error: ${res.error}`);
         data = res.data;
       } else {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers,
-          body: bodyStr
-        });
+        const response = await fetch(this.url, { method: 'POST', headers, body: bodyStr });
         if (!response.ok) throw new Error(`OpenAI API Error: ${response.statusText}`);
         data = await response.json();
       }
@@ -130,6 +116,85 @@ export class OpenAIProvider implements LLMProvider {
     } catch (error: any) {
       console.error('LLM Generation Error:', error);
       return `Error generating response: ${error.message}`;
+    }
+  }
+
+  async generateAnswerStream(
+    question: string,
+    systemPrompt: string,
+    model: string = 'gpt-4o-mini',
+    onChunk: (partial: string, full: string) => void,
+    onDone: (full: string) => void,
+    onError: (err: string) => void
+  ): Promise<void> {
+    if (!this.apiKey || this.apiKey === 'mock_key') {
+      onError("Error: Please add your OpenAI API Key in Settings to generate answers.");
+      return;
+    }
+
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` };
+    const bodyStr = JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: question }
+      ],
+      max_tokens: 350,
+      temperature: 0.7,
+      stream: true,
+    });
+
+    try {
+      if ((window as any).electronAPI && this.isProxy) {
+        // Proxy path: main process streams chunks back via IPC
+        let full = '';
+        const result = await (window as any).electronAPI.url.postStream(
+          this.url,
+          headers,
+          bodyStr,
+          (token: string) => {
+            full += token;
+            onChunk(token, full);
+          }
+        );
+        if (!result.ok) throw new Error(result.error);
+        onDone(result.data);
+      } else {
+        // Direct path: browser fetch with ReadableStream
+        const response = await fetch(this.url, { method: 'POST', headers, body: bodyStr });
+        if (!response.ok) throw new Error(`OpenAI API Error: ${response.statusText}`);
+
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+        let full = '';
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data: ') || trimmed === 'data: [DONE]') continue;
+            try {
+              const data = JSON.parse(trimmed.slice(6));
+              const token = data.choices?.[0]?.delta?.content || '';
+              if (token) {
+                full += token;
+                onChunk(token, full);
+              }
+            } catch {}
+          }
+        }
+        onDone(full);
+      }
+    } catch (error: any) {
+      console.error('LLM Stream Error:', error);
+      onError(`Error generating response: ${error.message}`);
     }
   }
 }
@@ -141,7 +206,8 @@ export function buildPrompt(
   question: string,
   _interviewType: 'behavioral' | 'technical' = 'behavioral',
   language: string = 'en',
-  documents: { title: string; content: string }[] = []
+  documents: { title: string; content: string }[] = [],
+  extraInstructions: string = ''
 ): string {
   const langMap: Record<string, string> = {
     en: 'English', es: 'Spanish', fr: 'French', de: 'German'
@@ -149,59 +215,40 @@ export function buildPrompt(
   const targetLang = langMap[language] || 'English';
 
   return `
-You are an invisible interview coach whispering in a candidate's ear during a live interview. Your job is to give them a natural-sounding answer they can adapt and say in their own words.
+You are an invisible interview coach whispering answers into a candidate's ear during a live interview.
 
-IMPORTANT: Write how real people actually talk in interviews. Not how AI writes. Not how a LinkedIn post sounds. How a confident, prepared person actually speaks out loud to another human.
+YOUR JOB: Give them a natural, speakable answer they can say out loud — word for word if needed.
 
 RULES:
-- Use the candidate's real experience from their resume, but phrase it the way they'd actually say it out loud
-- Keep each point to ONE short line they can glance at mid-conversation
-- No corporate jargon. No filler. No "I'm passionate about..." or "I thrive in..." — nobody actually talks like that
-- 3 points max. Less is more.
+- Write 3-4 bullet points. Each bullet is one complete sentence they can speak aloud.
+- Sound like a real person talking, not an essay or a LinkedIn post.
+- Ground every answer in facts from their resume. Never invent employers, projects, or numbers.
+- Keep the whole answer under 100 words total.
+- No headers, no labels like "Start with:", no emojis.
+- First bullet answers the question directly. Remaining bullets add evidence or context.
+${extraInstructions ? `- ${extraInstructions}` : ''}
 
-FORMAT (follow this exactly):
+EXAMPLE — "Why did you leave your current job?":
+- I'm looking for new challenges and a faster-moving environment than where I am now.
+- I've learned a lot at my current company, but I'm ready to take on more ownership and scope.
+- A company like this, where things are growing fast, is exactly what I've been looking for.
 
-**🎯 Start with:** [A casual, natural opening sentence — the kind of thing you'd actually say]
-
-**📌 Key points:**
-- [Something specific from their resume, phrased casually]
-- [Another specific thing, focused on what they actually did or achieved]
-- [Connect it back to why they're here / this role]
-
-**🎬 Wrap up:** [A natural closing that sounds human, not rehearsed]
-
-EXAMPLE — if asked "Tell me about yourself":
-
-**🎯 Start with:** "Yeah, so I've been in recruiting for about four years now, mostly hospitality and healthcare..."
-
-**📌 Key points:**
-- At BroadPath I basically built out their remote healthcare hiring from the ground up
-- Then at Stratton I shifted to luxury hospitality — learned a ton about screening for culture fit
-- Been wanting to get into fintech for a while, which is what led me here
-
-**🎬 Wrap up:** "So yeah, I want to take what I've learned and bring it somewhere that's growing fast — and this seemed like the right fit."
-
-^ That's the tone. Natural, confident, sounds like a real person. Match that energy.
-
-
-### CONTEXT:
-=== Target Language ===
+CONTEXT:
+=== Language ===
 ${targetLang}
 
 === Job Description ===
-${jd}
+${jd || '(not provided)'}
 
 === Candidate Resume ===
-${resume}
+${resume || '(not provided)'}
+${documents.length > 0 ? `\n=== Knowledge Base ===\n${documents.map(d => `${d.title}:\n${d.content}`).join('\n\n')}\n` : ''}
+=== Recent Conversation ===
+${recentTranscripts.join('\n') || '(none yet)'}
 
-${documents.length > 0 ? `=== Knowledge Base ===\n${documents.map(d => `Document: ${d.title}\n${d.content}`).join('\n\n')}\n` : ''}
-
-=== Recent Conversation (Last 5 mins) ===
-${recentTranscripts.join('\n')}
-
-=== Exact Interviewer Question ===
+=== Question ===
 ${question}
 
-Generate the response in ${targetLang} now.
+Respond in ${targetLang}. Bullet points only. No preamble.
 `;
 }

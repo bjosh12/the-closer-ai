@@ -314,6 +314,43 @@ ipcMain.handle('url:post', async (_, url, headers, body) => {
   }
 });
 
+ipcMain.handle('url:postStream', async (event, url, headers, body) => {
+  try {
+    const response = await fetch(url, { method: 'POST', headers, body });
+    if (!response.ok) return { ok: false, error: response.statusText };
+
+    const reader = (response.body as any).getReader();
+    const decoder = new TextDecoder();
+    let full = '';
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data: ') || trimmed === 'data: [DONE]') continue;
+        try {
+          const data = JSON.parse(trimmed.slice(6));
+          const token = data.choices?.[0]?.delta?.content || '';
+          if (token) {
+            full += token;
+            event.sender.send('stream:chunk', token);
+          }
+        } catch {}
+      }
+    }
+    return { ok: true, data: full };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  }
+});
+
 // ─── IPC: Widget ──────────────────────────────────────────────────────────────
 ipcMain.handle('widget:open', () => {
   if (widgetWindow) { widgetWindow.show(); return; }
