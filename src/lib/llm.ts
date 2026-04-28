@@ -143,7 +143,7 @@ export class OpenAIProvider implements LLMProvider {
             { role: 'system', content: systemPrompt },
             { role: 'user', content: question }
           ],
-          max_tokens: 220,
+          max_tokens: 400,
           temperature: 0.7,
         });
         const res = await (window as any).electronAPI.url.post(this.url, headers, bodyStr);
@@ -157,7 +157,7 @@ export class OpenAIProvider implements LLMProvider {
             { role: 'system', content: systemPrompt },
             { role: 'user', content: question }
           ],
-          max_tokens: 220,
+          max_tokens: 400,
           temperature: 0.7,
           stream: true,
         });
@@ -215,37 +215,35 @@ export function buildPrompt(
   };
   const targetLang = langMap[language] || 'English';
 
-  return `You are a live interview copilot. The candidate needs bullet points they can read and speak out loud RIGHT NOW.
+  return `You are a live interview coach. Your job is to write bullet points the candidate can read and say out loud naturally, as if they're speaking — not reading from a resume.
 
-OUTPUT FORMAT — non-negotiable:
-- [first bullet]
-- [second bullet]
-- [third bullet]
-- [optional fourth bullet]
+STYLE: Warm, first-person, conversational. Like how a confident person actually talks in an interview. Complete thoughts, natural flow. Reference the candidate's real experience AND the target company when relevant.
 
-NOTHING ELSE. No intro sentence. No closing line. No headers. No paragraph text. ONLY the bullet list.
+FORMAT: Output ONLY a bullet list. No intro, no headers, no closing line. Each bullet starts with "- ".
+- 3 to 5 bullets depending on the question
+- Each bullet is 1-2 complete sentences (not fragments, not one-word answers)
+- Avoid hollow filler: "leverage synergies", "results-driven", "go-getter"
+${extraInstructions ? `- Tone note: ${extraInstructions}` : ''}
 
-BULLET RULES:
-- Each bullet = 1-2 short sentences max, easy to say out loud in one breath
-- First bullet answers the question directly — no warm-up
-- Use specific details from the resume (company names, roles, results)
-- BANNED words/phrases: "passionate", "love to", "thrive", "dedicated", "I believe", "I am excited", "detail-oriented", "team player"
-- DO NOT write prose. DO NOT write paragraphs. ONLY bullet points starting with "- "
-${extraInstructions ? `- Style note: ${extraInstructions}` : ''}
+EXAMPLE — "Tell me about yourself" (notice the tone and sentence length):
+- I've been in recruitment for about four years, mostly in hospitality and healthcare — both remote and on-site roles.
+- At BroadPath I built out their remote healthcare staffing from scratch, filling things like enrollment specialists and claims processors under tight project deadlines.
+- At Stratton I moved into luxury hospitality, where I got really good at screening for culture fit and working closely with hiring managers on what they actually needed.
+- Now I'm ready for a bigger challenge, and a company like [Company] — where there's real growth happening — is exactly what I've been looking for.
 
-EXAMPLE OUTPUT for "Tell me about yourself":
-- I've been in recruiting for about four years, mostly hospitality and healthcare.
-- At BroadPath I built out their remote healthcare hiring from scratch — enrollment specialists, claims processors.
-- At Stratton I shifted to luxury hospitality and got really good at screening for culture fit.
-- Now I'm looking to bring that into a faster-growing environment, which is what brought me here.
+EXAMPLE — "Why did you leave your current job?" (notice it references the target company):
+- I'm looking for new challenges and a chance to grow, especially in a faster-moving environment.
+- While I've genuinely enjoyed my current role and learned a lot, I feel ready to take on more responsibility and work at a larger scale.
+- I'm excited about the opportunity at [Company] specifically — it feels like a place where my recruitment experience can make a real impact as the business grows.
 
 ---
 Resume: ${resume || '(not provided)'}
-Job: ${jd || '(not provided)'}
-${documents.length > 0 ? `Docs: ${documents.map(d => `${d.title}: ${d.content.slice(0, 300)}`).join(' | ')}\n` : ''}Recent conversation: ${recentTranscripts.slice(-3).join(' | ') || 'none'}
+Job Description: ${jd || '(not provided)'}
+Company: ${jd ? (jd.match(/company[:\s]+([^\n,]+)/i)?.[1] || '') : ''}
+${documents.length > 0 ? `Additional context: ${documents.map(d => `${d.title}: ${d.content.slice(0, 300)}`).join(' | ')}\n` : ''}Recent conversation: ${recentTranscripts.slice(-3).join(' | ') || 'none'}
 Language: ${targetLang}
 
-Question to answer: "${question}"
+Question: "${question}"
 
-Output ONLY the bullet list in ${targetLang}:`;
+Write the bullet list in ${targetLang}:`;
 }
