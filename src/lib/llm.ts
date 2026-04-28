@@ -143,7 +143,7 @@ export class OpenAIProvider implements LLMProvider {
             { role: 'system', content: systemPrompt },
             { role: 'user', content: question }
           ],
-          max_tokens: 350,
+          max_tokens: 220,
           temperature: 0.7,
         });
         const res = await (window as any).electronAPI.url.post(this.url, headers, bodyStr);
@@ -157,7 +157,7 @@ export class OpenAIProvider implements LLMProvider {
             { role: 'system', content: systemPrompt },
             { role: 'user', content: question }
           ],
-          max_tokens: 350,
+          max_tokens: 220,
           temperature: 0.7,
           stream: true,
         });
@@ -215,41 +215,37 @@ export function buildPrompt(
   };
   const targetLang = langMap[language] || 'English';
 
-  return `
-You are an invisible interview coach whispering answers into a candidate's ear during a live interview.
+  return `You are a live interview copilot. The candidate needs bullet points they can read and speak out loud RIGHT NOW.
 
-YOUR JOB: Give them a natural, speakable answer they can say out loud — word for word if needed.
+OUTPUT FORMAT — non-negotiable:
+- [first bullet]
+- [second bullet]
+- [third bullet]
+- [optional fourth bullet]
 
-RULES:
-- Write 3-4 bullet points. Each bullet is one complete sentence they can speak aloud.
-- Sound like a real person talking, not an essay or a LinkedIn post.
-- Ground every answer in facts from their resume. Never invent employers, projects, or numbers.
-- Keep the whole answer under 100 words total.
-- No headers, no labels like "Start with:", no emojis.
-- First bullet answers the question directly. Remaining bullets add evidence or context.
-${extraInstructions ? `- ${extraInstructions}` : ''}
+NOTHING ELSE. No intro sentence. No closing line. No headers. No paragraph text. ONLY the bullet list.
 
-EXAMPLE — "Why did you leave your current job?":
-- I'm looking for new challenges and a faster-moving environment than where I am now.
-- I've learned a lot at my current company, but I'm ready to take on more ownership and scope.
-- A company like this, where things are growing fast, is exactly what I've been looking for.
+BULLET RULES:
+- Each bullet = 1-2 short sentences max, easy to say out loud in one breath
+- First bullet answers the question directly — no warm-up
+- Use specific details from the resume (company names, roles, results)
+- BANNED words/phrases: "passionate", "love to", "thrive", "dedicated", "I believe", "I am excited", "detail-oriented", "team player"
+- DO NOT write prose. DO NOT write paragraphs. ONLY bullet points starting with "- "
+${extraInstructions ? `- Style note: ${extraInstructions}` : ''}
 
-CONTEXT:
-=== Language ===
-${targetLang}
+EXAMPLE OUTPUT for "Tell me about yourself":
+- I've been in recruiting for about four years, mostly hospitality and healthcare.
+- At BroadPath I built out their remote healthcare hiring from scratch — enrollment specialists, claims processors.
+- At Stratton I shifted to luxury hospitality and got really good at screening for culture fit.
+- Now I'm looking to bring that into a faster-growing environment, which is what brought me here.
 
-=== Job Description ===
-${jd || '(not provided)'}
+---
+Resume: ${resume || '(not provided)'}
+Job: ${jd || '(not provided)'}
+${documents.length > 0 ? `Docs: ${documents.map(d => `${d.title}: ${d.content.slice(0, 300)}`).join(' | ')}\n` : ''}Recent conversation: ${recentTranscripts.slice(-3).join(' | ') || 'none'}
+Language: ${targetLang}
 
-=== Candidate Resume ===
-${resume || '(not provided)'}
-${documents.length > 0 ? `\n=== Knowledge Base ===\n${documents.map(d => `${d.title}:\n${d.content}`).join('\n\n')}\n` : ''}
-=== Recent Conversation ===
-${recentTranscripts.join('\n') || '(none yet)'}
+Question to answer: "${question}"
 
-=== Question ===
-${question}
-
-Respond in ${targetLang}. Bullet points only. No preamble.
-`;
+Output ONLY the bullet list in ${targetLang}:`;
 }
