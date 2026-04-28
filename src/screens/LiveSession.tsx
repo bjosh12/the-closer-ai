@@ -242,19 +242,16 @@ export function LiveSession() {
 
       sttMic.current.onTranscript((text, isFinal, analytics) => {
         // Skip mic transcripts that are echoes of the interviewer's audio bleeding through speakers.
-        // We compare against latestSystemText (updated on every system packet, interim + final)
-        // so this works even when the mic transcript arrives before the system one is committed.
-        if (isFinal) {
-          const micText = text.toLowerCase().trim();
-          const sysText = latestSystemText.current.toLowerCase().trim();
-          const isSimilarText = (a: string, b: string) => {
-            if (!a || !b || a.length < 8) return false;
-            const shorter = a.length < b.length ? a : b;
-            const longer = a.length < b.length ? b : a;
-            return longer.includes(shorter.slice(0, Math.max(12, Math.floor(shorter.length * 0.7))));
-          };
-          if (isSimilarText(micText, sysText)) return;
-        }
+        // Applies to both interim and final to prevent echo from appearing at all.
+        const micText = text.toLowerCase().trim();
+        const sysText = latestSystemText.current.toLowerCase().trim();
+        const isSimilarText = (a: string, b: string) => {
+          if (!a || !b || a.length < 8) return false;
+          const shorter = a.length < b.length ? a : b;
+          const longer = a.length < b.length ? b : a;
+          return longer.includes(shorter.slice(0, Math.max(12, Math.floor(shorter.length * 0.7))));
+        };
+        if (isSimilarText(micText, sysText)) return;
         addTranscript({ id: ongoingMicId, session_id: currentSession!.id, speaker: 'You', text, start_time: Date.now(), end_time: Date.now(), is_final: isFinal });
         if (analytics) setMicAnalytics(prev => ({ wpm: isFinal ? analytics.wpm : prev.wpm, fillers: prev.fillers + analytics.fillers }));
         if (isFinal) {
@@ -311,6 +308,14 @@ export function LiveSession() {
       }, 80);
     };
 
+    // Ensure the final text is always rendered as markdown bullets regardless of model output format
+    const normalizeBullets = (text: string): string => {
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      const alreadyBullets = lines.every(l => l.startsWith('- ') || l.startsWith('* '));
+      if (alreadyBullets) return text;
+      return lines.map(l => `- ${l.replace(/^[-*•]\s*/, '')}`).join('\n');
+    };
+
     await llm.current.generateAnswerStream(
       questionToUse,
       prompt,
@@ -320,10 +325,11 @@ export function LiveSession() {
         scheduleWidgetUpdate(full);
       },
       (full) => {
+        const formatted = normalizeBullets(full);
         if (widgetUpdateTimer) { clearTimeout(widgetUpdateTimer); widgetUpdateTimer = null; }
-        updateLatestAnswer(full);
-        if ((window as any).electronAPI) (window as any).electronAPI.widget.update({ text: full, question: questionToUse });
-        const finalAnswer = { ...placeholderAnswer, generated_text: full };
+        updateLatestAnswer(formatted);
+        if ((window as any).electronAPI) (window as any).electronAPI.widget.update({ text: formatted, question: questionToUse });
+        const finalAnswer = { ...placeholderAnswer, generated_text: formatted };
         setIsGenerating(false);
         if ((window as any).electronAPI) (window as any).electronAPI.db.saveAnswer(finalAnswer);
       },
