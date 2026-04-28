@@ -24,6 +24,8 @@ export function LiveSession() {
   const autoAnswerTimer = useRef<NodeJS.Timeout | null>(null);
   const questionBufferRef = useRef<string[]>([]);
   const lastAnswerTime = useRef<number>(0);
+  // Tracks the latest system audio text (interim + final) for cross-stream echo detection
+  const latestSystemText = useRef<string>('');
 
   useEffect(() => {
     if ((window as any).electronAPI) {
@@ -181,6 +183,8 @@ export function LiveSession() {
       let ongoingMicId = Date.now().toString() + '-mic';
 
       sttSystem.current.onTranscript((text, isFinal) => {
+        // Always keep latestSystemText current so mic echo filter can compare in real time
+        latestSystemText.current = text;
         addTranscript({ id: ongoingSysId, session_id: currentSession!.id, speaker: 'Interviewer', text, start_time: Date.now(), end_time: Date.now(), is_final: isFinal });
         if (isFinal) {
           ongoingSysId = Date.now().toString() + '-sys';
@@ -237,20 +241,19 @@ export function LiveSession() {
       }
 
       sttMic.current.onTranscript((text, isFinal, analytics) => {
-        // Skip mic transcripts that are echoes of the interviewer's audio through speakers
+        // Skip mic transcripts that are echoes of the interviewer's audio bleeding through speakers.
+        // We compare against latestSystemText (updated on every system packet, interim + final)
+        // so this works even when the mic transcript arrives before the system one is committed.
         if (isFinal) {
-          const recentInterviewer = useStore.getState().transcripts
-            .filter(t => t.speaker === 'Interviewer' && t.is_final)
-            .slice(-3);
-          const isEcho = recentInterviewer.some(t => {
-            const a = t.text.toLowerCase().trim();
-            const b = text.toLowerCase().trim();
-            if (!a || !b) return false;
+          const micText = text.toLowerCase().trim();
+          const sysText = latestSystemText.current.toLowerCase().trim();
+          const isSimilarText = (a: string, b: string) => {
+            if (!a || !b || a.length < 8) return false;
             const shorter = a.length < b.length ? a : b;
             const longer = a.length < b.length ? b : a;
-            return longer.includes(shorter.slice(0, Math.max(12, shorter.length * 0.7)));
-          });
-          if (isEcho) return;
+            return longer.includes(shorter.slice(0, Math.max(12, Math.floor(shorter.length * 0.7))));
+          };
+          if (isSimilarText(micText, sysText)) return;
         }
         addTranscript({ id: ongoingMicId, session_id: currentSession!.id, speaker: 'You', text, start_time: Date.now(), end_time: Date.now(), is_final: isFinal });
         if (analytics) setMicAnalytics(prev => ({ wpm: isFinal ? analytics.wpm : prev.wpm, fillers: prev.fillers + analytics.fillers }));
