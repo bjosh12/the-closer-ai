@@ -41,22 +41,20 @@ Generate a scorecard using EXACTLY this markdown structure:
 // ─── Per-type example blocks ──────────────────────────────────────────────────
 
 const BEHAVIORAL_EXAMPLES = `EXAMPLE — "Tell me about yourself":
-- I have four years of full-cycle recruitment experience — starting in healthcare at [Employer A] where I built their remote staffing pipeline from scratch, then in [industry] at [Employer B], managing simultaneous openings across multiple sites.
-- I own the whole process end-to-end: role scoping, proactive sourcing on LinkedIn and niche boards, structured interviews, and offer negotiation — at [Employer A] I redesigned the phone screen stage and cut average time-to-fill from 45 to 28 days.
-- I've always partnered closely with hiring managers rather than just sending CVs — at [Employer B] I ran weekly alignment check-ins that eliminated last-minute brief changes and reduced re-work by roughly 80%.
-- One thing I'm proud of is the candidate experience side — I consistently kept offer acceptance rates above 90% by keeping candidates informed and genuinely enthusiastic at every stage.
-- I'm excited about [Company] specifically because the pace and global scope are exactly what I want to work on next — and I'm bringing a sourcing mindset that's proven in high-volume, deadline-driven environments.
+- I've been in full-cycle recruitment for about four years, working across healthcare and hospitality — remote and on-site roles, high-volume and specialist hiring.
+- At my previous company I built their remote staffing pipeline from scratch, filling enrollment specialists and claims processors under tight project deadlines — that taught me how to source fast without cutting corners on quality.
+- Before that I moved into luxury hospitality hiring, where I got really good at screening for culture fit and working closely with hiring managers on what they actually needed, not just what the job description said.
+- Now I'm ready for a bigger challenge — and this role's focus on building strong business teams in a fast-moving environment is exactly where I want to take my career next.
 
 EXAMPLE — "Why did you leave your current job?":
-- At [Current/Previous Employer] I built a strong foundation — I owned the full recruitment cycle across [X] concurrent roles and learned how to work effectively with demanding hiring managers in a fast-moving environment.
-- That said, the environment was relatively stable and I've been actively looking for a scale-up where recruitment is a growth engine, not just backfill.
-- What drew me to [Company] specifically is that you're scaling fast in [industry] — that's the kind of environment where a recruiter shapes team design, not just fills reqs.
-- I'm ready for a step up in both scope and impact, and this role is exactly that next challenge.
+- I'm looking for new challenges and a chance to grow, especially in a faster-moving environment.
+- While I've genuinely enjoyed my current role, I feel ready to take on more responsibility and work at a larger scale.
+- I'm excited about this opportunity specifically because it feels like a place where my background can make a real impact as the business grows.
 
 EXAMPLE — "Tell me about a time you handled conflict" (Situation → Action → Result):
-- Situation: At [Employer], a hiring manager kept changing role requirements mid-process — by round two, I'd already screened 40+ candidates against the wrong criteria, wasting everyone's time and damaging pipeline quality.
-- Action: I paused sourcing, scheduled a structured intake meeting, and created a one-page role brief we both signed off on before I sent another CV. I also introduced a "change protocol" — any scope update required written justification and an agreed timeline impact.
-- Result: That same manager's time-to-fill dropped from 68 days to 41 on the next three roles, re-work fell by roughly 80%, and she became one of my strongest internal advocates.`;
+- Situation: At a previous employer, a hiring manager kept changing job requirements mid-process, meaning I'd already screened 40+ candidates against the wrong criteria.
+- Action: I set up a structured intake meeting, created a one-page role brief we both signed off on before sourcing, and flagged scope changes immediately with a written update.
+- Result: Fill time for that manager dropped from 68 days to 41, and re-work fell by about 80% over the next six months.`;
 
 const TECHNICAL_EXAMPLES = `EXAMPLE — "How would you scale a URL shortener?":
 - Approach: Start with a single-region Postgres DB for writes and read replicas for redirect lookups — 99% of traffic is reads, so scaling reads first matters most.
@@ -69,22 +67,20 @@ EXAMPLE — "What's the difference between a process and a thread?":
 - From my experience: I dealt with thread-safety bugs in a Python ETL pipeline — migrating hot paths to multiprocessing with queue-based IPC fixed a class of bugs and improved throughput by 3×.`;
 
 const GENERAL_EXAMPLES = `EXAMPLE — "Tell me about yourself":
-- I have [X] years of full-cycle recruitment experience — I've built pipelines in [industry A] at [Employer A] and in [industry B] at [Employer B], handling everything from role scoping and sourcing to offers and onboarding.
-- At [Employer A] I redesigned our phone screen process and cut average time-to-fill from 45 to 28 days across a portfolio of 10+ concurrent roles.
-- I work closely with hiring managers — not just sending CVs, but running intake meetings, shaping job briefs, and aligning on what "great" actually looks like for each role. At [Employer B], this approach reduced brief changes mid-process and re-work by about 80%.
-- I'm also intentional about candidate experience — I've consistently kept offer acceptance rates above 90% by keeping candidates informed and excited at every stage, not just at the offer.
-- I'm drawn to [Company] because [specific reason tied to what makes this company unique] — the scope and pace here are exactly the next challenge I'm looking for.
+- I've been in full-cycle recruitment for about four years, working across healthcare and hospitality — remote and on-site roles, high-volume and specialist hiring.
+- At my previous company I built their remote staffing pipeline from scratch, filling enrollment specialists and claims processors under tight project deadlines.
+- I work closely with hiring managers — not just sending CVs, but running intake meetings, shaping job briefs, and aligning on what "great" actually looks like for each role, which reduced re-work by about 80%.
+- Now I'm ready for a bigger challenge, and this role's growth focus is exactly what I've been looking for.
 
 EXAMPLE — "What are your strengths and weaknesses?":
-- My biggest strength is that I source proactively, not reactively — at [Employer A] I built a pipeline of pre-vetted candidates for recurring roles, which cut sourcing time by about 30% on repeat reqs.
-- I'm also strong on the hiring manager partnership side — I've been told I'm unusually good at translating vague hiring briefs into precise scorecards, which saves a lot of rounds of feedback later.
-- For a weakness, I've historically underestimated how long stakeholder alignment takes in matrix organisations — I used to jump straight to sourcing before everyone was fully aligned. I've learned to build alignment milestones into my process upfront, and it's made a real difference.
+- My biggest strength is that I source proactively, not reactively — I build pipelines before the req opens, which cuts sourcing time significantly on repeat roles.
+- I'm also strong on the hiring manager partnership side — I translate vague briefs into precise scorecards, which saves rounds of feedback later.
+- For a weakness, I've historically underestimated how long stakeholder alignment takes — I used to jump straight to sourcing before everyone was fully aligned. I've since learned to build alignment milestones into my process upfront, and it's made a real difference.
 
 EXAMPLE — "Why did you leave your current job?":
-- At [Current/Previous Employer] I built a strong foundation — full-cycle ownership across [X] concurrent roles and real experience working with demanding hiring managers in a fast-moving environment.
-- That said, the environment was relatively stable and I want to work somewhere recruitment is a growth lever, not just backfill.
-- What specifically drew me to [Company] is [concrete reason] — that's the kind of environment where a recruiter can actually shape the team, not just fill the headcount plan.
-- I'm ready for more scope, more impact, and a bigger challenge — and this role is exactly that.`;
+- I'm looking for new challenges and a chance to grow, especially in a faster-moving environment.
+- While I've genuinely enjoyed my current role, I feel ready to take on more responsibility and work at a larger scale.
+- I'm excited about this opportunity specifically because it feels like a place where my background can make a real impact as the business grows.`;
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
 
@@ -122,7 +118,7 @@ export function buildPrompt(
   let typeInstructions: string;
   if (interviewType === 'behavioral') {
     typeBlock = BEHAVIORAL_EXAMPLES;
-    typeInstructions = 'For behavioral questions, structure each answer using Situation → Action → Result (STAR). Name the specific company, project, and metric — never leave placeholders.';
+    typeInstructions = 'For behavioral questions, structure each answer using Situation → Action → Result (STAR). Name the specific company, project, and metric when supported by the resume or job description — never invent details.';
   } else if (interviewType === 'technical') {
     typeBlock = TECHNICAL_EXAMPLES;
     typeInstructions = 'For technical questions, structure each answer as: Approach → Tradeoff → Concrete experience from the resume above. Be precise about data structures, scale numbers, and design decisions.';
@@ -153,13 +149,13 @@ STYLE: Warm, first-person, conversational. Like how a confident person actually 
 ${typeInstructions}
 
 FORMAT: Output ONLY a bullet list. No intro, no headers, no closing line. Each bullet starts with "- ".
-- 5 bullets (no fewer — quality over brevity)
+- 4 to 5 bullets depending on the question depth
 - Each bullet is 1-2 complete sentences, spoken-word natural (not stiff, not CV-style)
-- HARD RULE: every bullet must contain at least one of: a named employer, a number/metric, or a specific skill/tool/process. If you can't ground it, cut it.
-- HARD RULE: no generic claim that any candidate could make. "I'm organised", "I'm a team player", "I'm passionate" → BANNED unless followed immediately by a named proof.
-- At least one bullet must explicitly bridge past experience to what THIS company/role needs. Say "which is exactly what [Company] needs when..." or "that transfers directly to..." — not just "I'm looking for a new challenge."
-- Weakness answers: never say "perfectionist" — it is a red flag. Give a real, specific weakness with a genuine fix.
+- Ground every bullet in the resume. Name a specific company, project, or metric when available — never write something that could apply to any candidate.
+- At least one bullet must explicitly connect past experience to the target company/role. Say WHY it transfers, not just what you did.
 - Avoid hollow filler: "leverage synergies", "results-driven", "go-getter", "fast-paced", "passionate about"
+- Weakness answers: give a real, specific weakness with a genuine fix — never say "perfectionist."
+- If the resume or job description does not support a required detail, keep the wording truthful and specific without making up facts.
 ${extraInstructions ? `- Tone note: ${extraInstructions}` : ''}
 ${bridgeBlock ? `\n${bridgeBlock}` : ''}
 
