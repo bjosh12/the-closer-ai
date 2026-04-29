@@ -33,7 +33,7 @@ export function HomeDashboard() {
   const [userPlan, setUserPlan] = useState('free');
   const [nextReset, setNextReset] = useState<string | null>(null);
   const [timeLeftStr, setTimeLeftStr] = useState('');
-  const [recentSessions] = useState<any[]>([]);
+  const [allSessions, setAllSessions] = useState<any[]>([]);
 
   useEffect(() => {
     // If licensed, set plan to lifetime immediately
@@ -41,9 +41,10 @@ export function HomeDashboard() {
       setUserPlan('lifetime');
     }
 
-    // Load local templates
+    // Load local templates + session history
     if ((window as any).electronAPI) {
       (window as any).electronAPI.db.getTemplates().then(setTemplates);
+      (window as any).electronAPI.db.getSessions().then(setAllSessions);
     }
 
     // Sync cloud resume + documents on mount
@@ -112,9 +113,17 @@ export function HomeDashboard() {
     return () => clearInterval(interval);
   }, [nextReset, userPlan]);
 
-  const handleApplyTemplate = (templateId: string) => {
-    const t = templates.find(x => x.id === templateId);
+  const handleApplyTemplate = (id: string) => {
+    const t = templates.find(x => x.id === id);
     if (t) { setJobTitle(t.title); setCompanyName(t.company); setJobDescription(t.jd_text); }
+  };
+
+  const handleDeleteTemplate = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if ((window as any).electronAPI) {
+      await (window as any).electronAPI.db.deleteTemplate(id);
+      setTemplates(prev => prev.filter(t => t.id !== id));
+    }
   };
 
   const handleFetchUrl = async () => {
@@ -236,8 +245,8 @@ export function HomeDashboard() {
           </>
         ) : (
           <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.3)' }}>
-            ⚠ No cloud resume found — the AI will answer without your resume context.{' '}
-            <button onClick={() => setCurrentView('settings')} style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, padding: 0 }}>Upload in web app →</button>
+            ⚠ No resume found — the AI will answer without your resume context.{' '}
+            <button onClick={() => setCurrentView('settings')} style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, padding: 0 }}>Upload in Settings →</button>
           </span>
         )}
       </div>
@@ -245,7 +254,7 @@ export function HomeDashboard() {
       {/* Stats Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
         {[
-          { label: 'Total Sessions', value: recentSessions.length >= 5 ? '5+' : recentSessions.length, icon: '🎙️' },
+          { label: 'Total Sessions', value: allSessions.length, icon: '🎙️' },
           { label: 'Cloud Documents', value: cloudDocCount, icon: '📄' },
           { label: 'Plan Status', value: userPlan.toUpperCase(), icon: '💎', color: userPlan === 'free' ? '#94a3b8' : '#fbbf24' },
           { label: 'Time Status', value: userPlan === 'free' ? `${Math.max(0, 15 - sessionMinutesUsed)} min left` : 'Unlimited Usage', subValue: timeLeftStr, icon: '⏱️' },
@@ -277,15 +286,29 @@ export function HomeDashboard() {
               {/* Template Selector */}
               {templates.length > 0 && (
                 <div style={{ background: 'rgba(167,139,250,0.05)', border: '1px solid rgba(167,139,250,0.12)', borderRadius: 9, padding: '0.875rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <label style={labelStyle}>Load Saved Template</label>
-                    <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.2)' }}>{templates.length} saved</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>Saved Templates</label>
+                    <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.2)' }}>{templates.length} saved · click to load</div>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <select onChange={e => handleApplyTemplate(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
-                      <option value="" style={{ background: '#111118', color: '#fff' }}>Select a template...</option>
-                      {templates.map(t => <option key={t.id} value={t.id} style={{ background: '#111118', color: '#fff' }}>{t.title} @ {t.company}</option>)}
-                    </select>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {templates.map(t => (
+                      <div key={t.id} style={{ display: 'flex', alignItems: 'center', background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.15)', borderRadius: 6, overflow: 'hidden' }}>
+                        <button
+                          onClick={() => handleApplyTemplate(t.id)}
+                          style={{ padding: '0.3rem 0.625rem', background: 'none', border: 'none', color: '#c4b5fd', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                          title={`Load: ${t.title} @ ${t.company}`}
+                        >
+                          {t.title} <span style={{ opacity: 0.5 }}>@ {t.company}</span>
+                        </button>
+                        <button
+                          onClick={e => handleDeleteTemplate(t.id, e)}
+                          style={{ padding: '0.3rem 0.5rem', background: 'none', border: 'none', borderLeft: '1px solid rgba(167,139,250,0.15)', color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem', cursor: 'pointer', lineHeight: 1 }}
+                          title="Delete template"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -332,6 +355,7 @@ export function HomeDashboard() {
                     <option value="gpt-4.1-mini" style={{ background: '#111118', color: '#fff' }}>GPT-4.1 Mini · Fast</option>
                     <option value="gpt-4.1" style={{ background: '#111118', color: '#fff' }}>GPT-4.1 · Smart</option>
                     <option value="gpt-4-turbo" style={{ background: '#111118', color: '#fff' }}>GPT-4 Turbo · Smart</option>
+                    <option value="claude-sonnet-4-6" style={{ background: '#111118', color: '#c4b5fd' }}>Claude Sonnet 4.6 · Best for behavioral ✦</option>
                   </select>
                 </div>
                 <div>
@@ -391,19 +415,23 @@ export function HomeDashboard() {
               <button onClick={() => setCurrentView('history')} style={{ background: 'none', border: 'none', color: '#a78bfa', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 700 }}>View All</button>
             </div>
             
-            {recentSessions.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {recentSessions.map(s => (
-                  <div key={s.id} style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: 9, border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.job_title}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)', marginBottom: '0.25rem' }}>{s.company_name}</div>
-                    <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.2)' }}>{new Date(s.created_at).toLocaleDateString()}</div>
+            {allSessions.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {allSessions.slice(0, 5).map(s => (
+                  <div key={s.id} style={{ padding: '0.625rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}
+                    onClick={() => { setCurrentView('history'); }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: '0.78rem', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.job_title}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.15rem' }}>
+                      <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)' }}>{s.company_name}</span>
+                      <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.2)' }}>{new Date(s.created_at).toLocaleDateString()}</span>
+                    </div>
                   </div>
                 ))}
               </div>
             ) : (
               <div style={{ textAlign: 'center', padding: '2rem 0', color: 'rgba(255,255,255,0.15)', fontSize: '0.75rem' }}>
-                No recent sessions found.
+                No sessions yet. Launch your first interview!
               </div>
             )}
           </div>

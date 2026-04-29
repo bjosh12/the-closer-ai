@@ -8,6 +8,7 @@ export interface STTProvider {
 export class DeepgramProvider implements STTProvider {
   private apiKey: string;
   private callback: ((text: string, isFinal: boolean, analytics?: { wpm: number, fillers: number }) => void) | null = null;
+  private utteranceEndCallback: (() => void) | null = null;
   private socket: WebSocket | null = null;
   private language: string;
   private totalBytesSent: number = 0;
@@ -29,7 +30,7 @@ export class DeepgramProvider implements STTProvider {
     this.lastError = null;
     return new Promise((resolve, reject) => {
       try {
-        const url = `wss://api.deepgram.com/v1/listen?model=nova-2&punctuate=true&interim_results=true&filler_words=true&language=${this.language}&encoding=linear16&sample_rate=16000`;
+        const url = `wss://api.deepgram.com/v1/listen?model=nova-2&punctuate=true&interim_results=true&filler_words=true&language=${this.language}&encoding=linear16&sample_rate=16000&endpointing=300&utterance_end_ms=1000&vad_events=true`;
         this.socket = new WebSocket(url, ['token', this.apiKey]);
 
         this.socket.onopen = () => {
@@ -52,6 +53,18 @@ export class DeepgramProvider implements STTProvider {
         this.socket.onmessage = (message) => {
           try {
             const received = JSON.parse(message.data);
+
+            // Handle UtteranceEnd event (fired by Deepgram when speaker stops)
+            if (received.type === 'UtteranceEnd') {
+              if (this.utteranceEndCallback) this.utteranceEndCallback();
+              return;
+            }
+
+            // Handle speech_final — Deepgram marks a pause-detected boundary
+            if (received.speech_final === true && this.utteranceEndCallback) {
+              this.utteranceEndCallback();
+            }
+
             const transcript = received.channel?.alternatives[0]?.transcript;
             if (transcript && received.is_final !== undefined) {
               if (this.callback && transcript.trim().length > 0) {
@@ -103,5 +116,9 @@ export class DeepgramProvider implements STTProvider {
 
   onTranscript(callback: (text: string, isFinal: boolean, analytics?: { wpm: number, fillers: number }) => void): void {
     this.callback = callback;
+  }
+
+  onUtteranceEnd(callback: () => void): void {
+    this.utteranceEndCallback = callback;
   }
 }

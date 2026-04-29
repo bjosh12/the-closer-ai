@@ -13,6 +13,7 @@ interface AppState {
   licenseKey: string | null;
   selectedModel: string;
   extraInstructions: string;
+  anthropicKey: string | null;
 
   setCurrentView: (view: AppState['currentView']) => void;
   setProfile: (profile: Profile) => void;
@@ -27,6 +28,7 @@ interface AppState {
   clearSessionData: () => void;
   setSelectedModel: (model: string) => void;
   setExtraInstructions: (instructions: string) => void;
+  setAnthropicKey: (key: string | null) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -41,6 +43,7 @@ export const useStore = create<AppState>((set) => ({
   licenseKey: null,
   selectedModel: 'gpt-4o-mini',
   extraInstructions: 'Use everyday words so it sounds natural.',
+  anthropicKey: null,
 
   setCurrentView: (view) => set({ currentView: view }),
   setProfile: (profile) => set({ profile }),
@@ -68,4 +71,5 @@ export const useStore = create<AppState>((set) => ({
   clearSessionData: () => set({ currentSession: null, transcripts: [], answers: [] }),
   setSelectedModel: (selectedModel) => set({ selectedModel }),
   setExtraInstructions: (extraInstructions) => set({ extraInstructions }),
+  setAnthropicKey: (anthropicKey) => set({ anthropicKey }),
 }));

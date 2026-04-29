@@ -47,11 +47,12 @@ function initDB() {
       is_final BOOLEAN
     );
     CREATE TABLE IF NOT EXISTS answers (
-      id TEXT PRIMARY KEY, 
-      session_id TEXT, 
-      trigger_transcript_id TEXT, 
-      generated_text TEXT, 
-      mode TEXT, 
+      id TEXT PRIMARY KEY,
+      session_id TEXT,
+      trigger_transcript_id TEXT,
+      question_text TEXT,
+      generated_text TEXT,
+      mode TEXT,
       created_at DATETIME
     );
     CREATE TABLE IF NOT EXISTS templates (
@@ -71,6 +72,10 @@ function initDB() {
 }
 
 initDB();
+
+// Migrations for existing databases — safe to re-run, errors are swallowed
+try { db.prepare('ALTER TABLE answers ADD COLUMN question_text TEXT').run(); } catch(_e) {}
+try { db.prepare('ALTER TABLE sessions ADD COLUMN language TEXT').run(); } catch(_e) {}
 
 export const dbHelpers = {
   getSessions: () => {
@@ -99,8 +104,8 @@ export const dbHelpers = {
     return stmt.all(sessionId);
   },
   saveAnswer: (answer: any) => {
-    const stmt = db.prepare('INSERT INTO answers (id, session_id, trigger_transcript_id, generated_text, mode, created_at) VALUES (@id, @session_id, @trigger_transcript_id, @generated_text, @mode, @created_at)');
-    stmt.run(answer);
+    const stmt = db.prepare('INSERT INTO answers (id, session_id, trigger_transcript_id, question_text, generated_text, mode, created_at) VALUES (@id, @session_id, @trigger_transcript_id, @question_text, @generated_text, @mode, @created_at)');
+    stmt.run({ ...answer, question_text: answer.question_text ?? null });
   },
   getAnswers: (sessionId: string) => {
     const stmt = db.prepare('SELECT * FROM answers WHERE session_id = ? ORDER BY created_at ASC');

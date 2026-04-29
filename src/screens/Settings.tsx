@@ -1,11 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '@/store/useStore';
 
 export function Settings() {
-  const { setCurrentView, isLicensed, setCloudUser } = useStore();
+  const { setCurrentView, isLicensed, setCloudUser, profile, setProfile, setAnthropicKey: storeSetAnthropicKey } = useStore();
+
+  // API keys
   const [deepgramKey, setDeepgramKey] = useState('');
   const [openAiKey, setOpenAiKey] = useState('');
+  const [anthropicKey, setAnthropicKey] = useState('');
   const [isSaved, setIsSaved] = useState(false);
+
+  // Profile / resume
+  const [profileName, setProfileName] = useState('');
+  const [resumeText, setResumeText] = useState('');
+  const [profileSaved, setProfileSaved] = useState(false);
+  const [pdfUploading, setPdfUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // App info & updates
   const [appVersion, setAppVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'error' | null>(null);
   const [updateVersion, setUpdateVersion] = useState('');
@@ -15,20 +27,31 @@ export function Settings() {
   const [updateChecking, setUpdateChecking] = useState(false);
 
   useEffect(() => {
+    // Hydrate profile fields from store
+    if (profile) {
+      setResumeText(profile.resume_text || '');
+      try {
+        const parsed = typeof profile.parsed_resume === 'string'
+          ? JSON.parse(profile.parsed_resume)
+          : profile.parsed_resume;
+        if (parsed?.name) setProfileName(parsed.name);
+      } catch (_e) {}
+    }
+
     if ((window as any).electronAPI) {
       const loadKeys = async () => {
         const dgKey = await (window as any).electronAPI.store.get('DEEPGRAM_API_KEY');
         const oaKey = await (window as any).electronAPI.store.get('OPENAI_API_KEY');
+        const anKey = await (window as any).electronAPI.store.get('ANTHROPIC_API_KEY');
         if (dgKey) setDeepgramKey(dgKey);
         if (oaKey) setOpenAiKey(oaKey);
+        if (anKey) setAnthropicKey(anKey);
       };
       loadKeys();
 
-      // Load app version
       (window as any).electronAPI.app.getVersion().then((v: string) => setAppVersion(v));
       (window as any).electronAPI.app.getLaunchAtStartup().then((v: boolean) => setLaunchAtStartup(v));
 
-      // Listen for update status broadcasts from main process
       (window as any).electronAPI.app.onUpdateStatus((status: string) => {
         setLastChecked(new Date());
         if (status === 'checking') setUpdateStatus('checking');
@@ -36,10 +59,7 @@ export function Settings() {
         else if (status.startsWith('available:')) { setUpdateStatus('available'); setUpdateVersion(status.split(':')[1]); }
         else if (status.startsWith('downloading:')) setUpdateStatus('downloading');
         else if (status.startsWith('downloaded:')) { setUpdateStatus('downloaded'); setUpdateVersion(status.split(':')[1]); }
-        else if (status.startsWith('error:')) { 
-          setUpdateStatus('error'); 
-          setUpdateErrorMsg(status.replace('error:', '')); 
-        }
+        else if (status.startsWith('error:')) { setUpdateStatus('error'); setUpdateErrorMsg(status.replace('error:', '')); }
       });
     }
   }, []);
@@ -48,8 +68,55 @@ export function Settings() {
     if ((window as any).electronAPI) {
       await (window as any).electronAPI.store.set('DEEPGRAM_API_KEY', deepgramKey);
       await (window as any).electronAPI.store.set('OPENAI_API_KEY', openAiKey);
+      await (window as any).electronAPI.store.set('ANTHROPIC_API_KEY', anthropicKey);
+      storeSetAnthropicKey(anthropicKey || null);
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2000);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    const trimmedResume = resumeText.trim();
+    if (!trimmedResume) {
+      alert('Please add some resume text before saving.');
+      return;
+    }
+    const parsedResume = JSON.stringify({ name: profileName.trim() });
+    const newProfile = {
+      id: (profile as any)?.id || 'profile_1',
+      user_id: 'user_1',
+      resume_text: trimmedResume,
+      parsed_resume: parsedResume,
+      default_style: 'Concise',
+    };
+    if ((window as any).electronAPI) {
+      await (window as any).electronAPI.db.saveProfile(newProfile);
+    }
+    setProfile(newProfile as any);
+    setProfileSaved(true);
+    setTimeout(() => setProfileSaved(false), 2000);
+  };
+
+  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPdfUploading(true);
+    try {
+      if ((window as any).electronAPI?.file?.parsePdf) {
+        // Electron: use the native path for pdf-parse in main process
+        const filePath = (file as any).path;
+        const text: string = await (window as any).electronAPI.file.parsePdf(filePath);
+        setResumeText(text);
+      } else {
+        // Browser fallback: read as plain text (won't parse PDF encoding, but better than nothing)
+        const text = await file.text();
+        setResumeText(text);
+      }
+    } catch (err: any) {
+      alert(`Failed to parse PDF: ${err.message || 'Unknown error'}`);
+    } finally {
+      setPdfUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -71,7 +138,7 @@ export function Settings() {
     background: '#111118',
     border: '1px solid rgba(255,255,255,0.1)',
     borderRadius: 10, color: '#fff', fontSize: '0.9rem',
-    outline: 'none', boxSizing: 'border-box'
+    outline: 'none', boxSizing: 'border-box',
   };
 
   return (
@@ -80,9 +147,9 @@ export function Settings() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem' }}>
           <div>
             <h1 style={{ fontSize: '2rem', fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-0.02em' }}>Settings</h1>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginTop: '0.25rem' }}>Configure your AI engine and stealth preferences</p>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginTop: '0.25rem' }}>Configure your AI engine and profile</p>
           </div>
-          <button 
+          <button
             onClick={() => setCurrentView('home')}
             style={{ padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
           >
@@ -91,7 +158,97 @@ export function Settings() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {/* API Keys Card - ONLY FOR LIFETIME LICENSED USERS */}
+
+          {/* ── Profile & Resume Card ────────────────────────────────────────── */}
+          <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '2rem' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>👤</span> Profile &amp; Resume
+            </h3>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', lineHeight: 1.6, marginBottom: '2rem' }}>
+              Your resume is used to personalise every AI answer. Keep it current for the best results.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Full Name</label>
+                <input
+                  type="text"
+                  value={profileName}
+                  onChange={e => setProfileName(e.target.value)}
+                  placeholder="Jane Smith"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
+                    Resume Text
+                    {resumeText && (
+                      <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', textTransform: 'none', fontWeight: 400 }}>
+                        {resumeText.length.toLocaleString()} chars
+                      </span>
+                    )}
+                  </label>
+                  <label
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.35rem',
+                      padding: '0.3rem 0.75rem',
+                      background: pdfUploading ? 'rgba(167,139,250,0.1)' : 'rgba(167,139,250,0.08)',
+                      border: '1px solid rgba(167,139,250,0.25)',
+                      borderRadius: 7,
+                      color: pdfUploading ? 'rgba(167,139,250,0.5)' : '#a78bfa',
+                      fontSize: '0.72rem', fontWeight: 700,
+                      cursor: pdfUploading ? 'default' : 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {pdfUploading ? '⟳ Parsing…' : '📄 Upload PDF'}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf"
+                      style={{ display: 'none' }}
+                      onChange={handlePdfUpload}
+                      disabled={pdfUploading}
+                    />
+                  </label>
+                </div>
+                <textarea
+                  value={resumeText}
+                  onChange={e => setResumeText(e.target.value)}
+                  placeholder="Paste your resume text here, or upload a PDF above…"
+                  style={{
+                    ...inputStyle,
+                    height: 200,
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    lineHeight: 1.6,
+                    fontSize: '0.82rem',
+                  }}
+                />
+              </div>
+
+              <button
+                onClick={handleSaveProfile}
+                disabled={profileSaved}
+                style={{
+                  padding: '0.875rem',
+                  background: profileSaved ? '#22c55e' : 'linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%)',
+                  border: 'none',
+                  borderRadius: 10,
+                  color: '#fff',
+                  fontWeight: 700,
+                  cursor: profileSaved ? 'default' : 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {profileSaved ? '✓ Profile Saved' : 'Save Profile'}
+              </button>
+            </div>
+          </div>
+
+          {/* ── API Keys Card (Lifetime only) ────────────────────────────────── */}
           {isLicensed ? (
             <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '2rem' }}>
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -100,31 +257,38 @@ export function Settings() {
               <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', lineHeight: 1.6, marginBottom: '2rem' }}>
                 As a Lifetime License holder, you use your own API keys. This ensures unlimited access and full privacy of your data.
               </p>
-              
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Deepgram API Key</label>
-                  <input type="password" value={deepgramKey} onChange={e => setDeepgramKey(e.target.value)} placeholder="sk-..." style={inputStyle} />
+                  <input type="password" value={deepgramKey} onChange={e => setDeepgramKey(e.target.value)} placeholder="dg_..." style={inputStyle} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>OpenAI API Key</label>
                   <input type="password" value={openAiKey} onChange={e => setOpenAiKey(e.target.value)} placeholder="sk-..." style={inputStyle} />
                 </div>
-                <button 
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
+                    Anthropic API Key{' '}
+                    <span style={{ color: 'rgba(167,139,250,0.7)', textTransform: 'none', fontWeight: 500 }}>(for Claude models)</span>
+                  </label>
+                  <input type="password" value={anthropicKey} onChange={e => setAnthropicKey(e.target.value)} placeholder="sk-ant-..." style={inputStyle} />
+                </div>
+                <button
                   onClick={handleSave}
-                  style={{ 
-                    marginTop: '1rem',
-                    padding: '0.875rem', 
+                  style={{
+                    marginTop: '0.5rem',
+                    padding: '0.875rem',
                     background: isSaved ? '#22c55e' : 'linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%)',
                     border: 'none',
-                    borderRadius: 10, 
-                    color: '#fff', 
-                    fontWeight: 700, 
+                    borderRadius: 10,
+                    color: '#fff',
+                    fontWeight: 700,
                     cursor: 'pointer',
-                    transition: 'all 0.2s'
+                    transition: 'all 0.2s',
                   }}
                 >
-                  {isSaved ? "✓ Settings Saved" : "Save Configuration"}
+                  {isSaved ? '✓ Keys Saved' : 'Save API Keys'}
                 </button>
               </div>
             </div>
@@ -134,10 +298,10 @@ export function Settings() {
                 <span>☁️</span> Cloud Managed AI
               </h3>
               <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', lineHeight: 1.6, margin: 0 }}>
-                You are currently using our hosted AI engine. No configuration is required. 
+                You are currently using our hosted AI engine. No configuration is required.
                 Your transcription and answer generation are handled automatically via your subscription.
               </p>
-              <button 
+              <button
                 onClick={() => setCurrentView('cloud-login')}
                 style={{ marginTop: '1.5rem', background: 'none', border: '1px solid rgba(196,181,253,0.3)', color: '#c4b5fd', padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
               >
@@ -146,7 +310,7 @@ export function Settings() {
             </div>
           )}
 
-          {/* Stealth Mode Info Card */}
+          {/* ── Stealth Mode Guide ───────────────────────────────────────────── */}
           <div style={{ background: 'linear-gradient(135deg, rgba(167,139,250,0.05) 0%, rgba(124,58,237,0.02) 100%)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: 16, padding: '2rem' }}>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#c4b5fd', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span>🕵️‍♂️</span> Stealth Mode Guide
@@ -167,23 +331,23 @@ export function Settings() {
             </div>
           </div>
 
-          {/* Keyboard Shortcuts Card */}
+          {/* ── Keyboard Shortcuts ───────────────────────────────────────────── */}
           <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '1.5rem' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span>⌨️</span> Keyboard Shortcuts
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
               {[
-                { keys: 'Alt + C', desc: 'Show / Hide widget', works: true },
-                { keys: 'Alt + G', desc: 'Toggle Ghost Mode', works: true },
-                { keys: 'Alt + S', desc: 'Start / Stop session', works: true },
-                { keys: 'Alt + A', desc: 'Generate AI answer', works: true },
-                { keys: 'Alt + X', desc: 'Clear transcript', works: true },
-                { keys: 'Ctrl + ,', desc: 'Open Settings', works: true },
-                { keys: 'Ctrl + H', desc: 'View history', works: true },
-              ].map(({ keys, desc, works }) => (
-                <div key={keys} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '0.5rem 0.75rem', opacity: works ? 1 : 0.45 }}>
-                  <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>{desc}{!works && <span style={{ fontSize: '0.65rem', color: '#f59e0b', marginLeft: 4 }}>(soon)</span>}</span>
+                { keys: 'Alt + C', desc: 'Show / Hide widget' },
+                { keys: 'Alt + G', desc: 'Toggle Ghost Mode' },
+                { keys: 'Alt + S', desc: 'Start / Stop session' },
+                { keys: 'Alt + A', desc: 'Generate AI answer' },
+                { keys: 'Alt + X', desc: 'Clear transcript' },
+                { keys: 'Ctrl + ,', desc: 'Open Settings' },
+                { keys: 'Ctrl + H', desc: 'View history' },
+              ].map(({ keys, desc }) => (
+                <div key={keys} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '0.5rem 0.75rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>{desc}</span>
                   <code style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '0.15rem 0.5rem', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700 }}>{keys}</code>
                 </div>
               ))}
@@ -191,13 +355,12 @@ export function Settings() {
             <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', marginTop: '0.5rem' }}>All shortcuts are <strong style={{ color: '#22c55e' }}>Global</strong>. They work even when the app is minimized or hidden.</p>
           </div>
 
-          {/* Preferences Card */}
+          {/* ── Preferences ─────────────────────────────────────────────────── */}
           <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '1.5rem' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span>⚙️</span> Preferences
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {/* Launch at startup toggle */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>Launch at Startup</div>
@@ -205,21 +368,12 @@ export function Settings() {
                 </div>
                 <button
                   onClick={handleToggleStartup}
-                  style={{
-                    width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
-                    background: launchAtStartup ? '#7c3aed' : 'rgba(255,255,255,0.1)',
-                    position: 'relative', transition: 'background 0.2s',
-                  }}
+                  style={{ width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: launchAtStartup ? '#7c3aed' : 'rgba(255,255,255,0.1)', position: 'relative', transition: 'background 0.2s' }}
                 >
-                  <div style={{
-                    position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%',
-                    background: '#fff', transition: 'left 0.2s',
-                    left: launchAtStartup ? 23 : 3,
-                  }} />
+                  <div style={{ position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', left: launchAtStartup ? 23 : 3 }} />
                 </button>
               </div>
 
-              {/* Sign out */}
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1rem' }}>
                 <button
                   onClick={handleSignOut}
@@ -232,7 +386,6 @@ export function Settings() {
                 </p>
               </div>
 
-              {/* Full Exit */}
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>Quit Application</div>
@@ -248,20 +401,20 @@ export function Settings() {
             </div>
           </div>
 
-          {/* Version & Update Status Card */}
+          {/* ── Version & Updates ───────────────────────────────────────────── */}
           <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '1.5rem' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>🚀</span> App Version & Updates
+              <span>🚀</span> App Version &amp; Updates
             </h3>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff', fontFamily: 'monospace' }}>v{appVersion || '...'}</span>
+                  <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff', fontFamily: 'monospace' }}>v{appVersion || '…'}</span>
                   {updateStatus === 'latest' && <span style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>✓ Up to date</span>}
                   {updateStatus === 'available' && <span style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>↑ v{updateVersion} available</span>}
-                  {updateStatus === 'downloading' && <span style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>⬇ Downloading...</span>}
+                  {updateStatus === 'downloading' && <span style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>⬇ Downloading…</span>}
                   {updateStatus === 'downloaded' && <span style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>✓ v{updateVersion} ready</span>}
-                  {updateStatus === 'checking' && <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>Checking...</span>}
+                  {updateStatus === 'checking' && <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>Checking…</span>}
                   {updateStatus === 'error' && <span style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>{updateErrorMsg || 'Check failed'}</span>}
                 </div>
                 {lastChecked && <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)' }}>Last checked: {lastChecked.toLocaleTimeString()}</span>}
@@ -272,7 +425,7 @@ export function Settings() {
                     onClick={() => { if ((window as any).electronAPI) (window as any).electronAPI.app.installUpdate(); }}
                     style={{ padding: '0.4rem 1rem', background: '#22c55e', border: 'none', borderRadius: 8, color: '#fff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(34,197,94,0.3)' }}
                   >
-                    Install & Restart Now
+                    Install &amp; Restart Now
                   </button>
                 )}
                 <button
@@ -285,26 +438,24 @@ export function Settings() {
                       await (window as any).electronAPI?.app.checkForUpdates();
                     } catch (e: any) {
                       setUpdateStatus('error');
-                      // e.message usually looks like "Error invoking remote method 'app:checkForUpdates': Error: Cannot check for updates..."
                       const msg = e.message ? e.message.split('Error: ').pop() : 'Check failed';
                       setUpdateErrorMsg(msg);
                     }
-                    // Give it 3s then reset spinner (actual result comes via onUpdateStatus)
                     setTimeout(() => setUpdateChecking(false), 3000);
                   }}
                   style={{ padding: '0.4rem 0.875rem', background: updateChecking ? 'rgba(167,139,250,0.15)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: updateChecking ? '#a78bfa' : 'rgba(255,255,255,0.6)', fontSize: '0.75rem', fontWeight: 600, cursor: updateChecking ? 'default' : 'pointer', transition: 'all 0.2s' }}
                 >
-                  {updateChecking ? '⟳ Checking...' : 'Check for Updates'}
+                  {updateChecking ? '⟳ Checking…' : 'Check for Updates'}
                 </button>
               </div>
             </div>
             <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', marginTop: '0.8rem' }}>
-              Updates are usually automatic, but you can force a check here. Version info is pulled directly from the current build.
+              Updates are usually automatic, but you can force a check here.
             </p>
+          </div>
 
         </div>
       </div>
     </div>
-  </div>
   );
 }

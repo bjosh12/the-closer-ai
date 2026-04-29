@@ -13,7 +13,7 @@ import { CloudLogin } from './screens/CloudLogin';
 import { WhatsNewModal } from './components/WhatsNewModal';
 
 function App() {
-  const { currentView, setDocuments, setCurrentView, setCloudUser } = useStore();
+  const { currentView, setDocuments, setCurrentView, setCloudUser, setProfile } = useStore();
   const [isWidget, setIsWidget] = useState(false);
   const [whatsNew, setWhatsNew] = useState<{ version: string } | null>(null);
   const [isBooting, setIsBooting] = useState(true); // show nothing while restoring session
@@ -31,10 +31,16 @@ function App() {
         } else {
           // Not logged in — check if this is a first-ever launch
           const isFirst = await (window as any).electronAPI.app.isFirstRun();
-          // First run: go to onboarding (which will redirect to login after)
-          // Returning user: go to login
           setCurrentView(isFirst ? 'onboarding' : 'cloud-login');
         }
+
+        // Always restore local profile as a fallback (cloud sync in HomeDashboard will
+        // override with the cloud version if the user is online and signed in)
+        try {
+          const localProfile = await (window as any).electronAPI.db.getProfile('user_1');
+          if (localProfile) setProfile(localProfile);
+        } catch (_e) {}
+
         setIsBooting(false);
       }).catch(() => {
         setCurrentView('cloud-login');

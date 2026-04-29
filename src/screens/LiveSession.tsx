@@ -3,7 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import { useStore } from '@/store/useStore';
 import { AudioRecorder } from '@/lib/audio';
 import { DeepgramProvider } from '@/lib/stt';
-import { OpenAIProvider, buildPrompt } from '@/lib/llm';
+import { OpenAIProvider, AnthropicProvider, LLMProvider, buildPrompt } from '@/lib/llm';
+import { detectQuestion } from '@/lib/questionDetect';
 
 export function LiveSession() {
   const { currentSession, transcripts, answers, addTranscript, addAnswer, updateLatestAnswer, setCurrentView } = useStore();
@@ -18,7 +19,8 @@ export function LiveSession() {
 
   const sttSystem = useRef<DeepgramProvider | null>(null);
   const sttMic = useRef<DeepgramProvider | null>(null);
-  const llm = useRef<OpenAIProvider | null>(null);
+  const llmOpenAI = useRef<OpenAIProvider | null>(null);
+  const llmAnthropic = useRef<AnthropicProvider | null>(null);
   const audioSystem = useRef<AudioRecorder | null>(null);
   const audioMic = useRef<AudioRecorder | null>(null);
   const autoAnswerTimer = useRef<NodeJS.Timeout | null>(null);
@@ -88,10 +90,12 @@ export function LiveSession() {
           console.warn('[LiveSession] Cloud user detected but failed to load proxy config. User may need to re-login.');
         }
         
+        const anthropicKey = await (window as any).electronAPI.store.get('ANTHROPIC_API_KEY') || '';
         const lang = currentSession?.language || 'en';
         sttSystem.current = new DeepgramProvider(dgKey || 'mock_key', lang);
         sttMic.current = new DeepgramProvider(dgKey || 'mock_key', lang);
-        llm.current = new OpenAIProvider(oaKey || 'mock_key');
+        llmOpenAI.current = new OpenAIProvider(oaKey || 'mock_key');
+        llmAnthropic.current = new AnthropicProvider(anthropicKey || 'mock_key');
         setKeysReady(true);
       };
       if (!keysReady) {
@@ -182,61 +186,72 @@ export function LiveSession() {
       let ongoingSysId = Date.now().toString() + '-sys';
       let ongoingMicId = Date.now().toString() + '-mic';
 
+      // Dedup helper shared by both transcript and utterance-end paths
+      const isSimilar = (a: string, b: string) => {
+        if (!a || !b) return false;
+        const shorter = a.length < b.length ? a : b;
+        const longer = a.length < b.length ? b : a;
+        return longer.toLowerCase().includes(shorter.toLowerCase().slice(0, Math.max(10, shorter.length * 0.6)));
+      };
+
       sttSystem.current.onTranscript((text, isFinal) => {
         // Always keep latestSystemText current so mic echo filter can compare in real time
         latestSystemText.current = text;
-        addTranscript({ id: ongoingSysId, session_id: currentSession!.id, speaker: 'Interviewer', text, start_time: Date.now(), end_time: Date.now(), is_final: isFinal });
+        const sysTranscript = { id: ongoingSysId, session_id: currentSession!.id, speaker: 'Interviewer', text, start_time: Date.now(), end_time: Date.now(), is_final: isFinal };
+        addTranscript(sysTranscript);
         if (isFinal) {
+          // Persist final interviewer transcript to DB
+          if ((window as any).electronAPI) (window as any).electronAPI.db.saveTranscript(sysTranscript);
           ongoingSysId = Date.now().toString() + '-sys';
           const trimmed = text.trim();
           if (!trimmed) return;
 
           // --- DEDUP: skip if this text is very similar to the last buffered entry ---
           const lastEntry = questionBufferRef.current[questionBufferRef.current.length - 1] || '';
-          const isSimilar = (a: string, b: string) => {
-            if (!a || !b) return false;
-            const shorter = a.length < b.length ? a : b;
-            const longer = a.length < b.length ? b : a;
-            return longer.toLowerCase().includes(shorter.toLowerCase().slice(0, Math.max(10, shorter.length * 0.6)));
-          };
           if (isSimilar(lastEntry, trimmed)) {
             console.log('[AutoAnswer] Duplicate skipped:', trimmed);
-            // Still reset the timer (interviewer is still talking)
+            // Reset safety-net timer
             if (autoAnswerTimer.current) clearTimeout(autoAnswerTimer.current);
-            autoAnswerTimer.current = setTimeout(fireAutoAnswer, 7000);
+            autoAnswerTimer.current = setTimeout(fireAutoAnswer, 1500);
             return;
           }
 
           questionBufferRef.current.push(trimmed);
           console.log('[AutoAnswer] Buffered:', questionBufferRef.current);
 
-          // Reset debounce timer on every new fragment
+          // 1.5 s safety-net fallback (replaced by utterance-end events when they fire)
           if (autoAnswerTimer.current) clearTimeout(autoAnswerTimer.current);
-          autoAnswerTimer.current = setTimeout(fireAutoAnswer, 7000);
+          autoAnswerTimer.current = setTimeout(fireAutoAnswer, 1500);
         }
+      });
+
+      // Primary trigger: Deepgram UtteranceEnd / speech_final events
+      sttSystem.current.onUtteranceEnd(() => {
+        if (autoAnswerTimer.current) { clearTimeout(autoAnswerTimer.current); autoAnswerTimer.current = null; }
+        fireAutoAnswer();
       });
 
       function fireAutoAnswer() {
         const fullQuestion = questionBufferRef.current.join(' ');
-        console.log('[AutoAnswer] Timer fired. Buffer:', fullQuestion);
+        console.log('[AutoAnswer] Firing. Buffer:', fullQuestion);
 
-        // --- COOLDOWN: don't auto-generate if we just generated an answer ---
-        const cooldown = 20000; // 20 seconds
+        // --- COOLDOWN: 8 s to allow back-to-back questions ---
+        const cooldown = 8000;
         if (Date.now() - lastAnswerTime.current < cooldown) {
-          console.log('[AutoAnswer] Cooldown active — skipping. Try "Force Answer" instead.');
+          console.log('[AutoAnswer] Cooldown active — skipping. Use Force Answer if needed.');
           questionBufferRef.current = [];
           return;
         }
 
-        // --- QUESTION DETECTION: only fire for actual questions (has ?) ---
-        const containsQuestion = /\?/.test(fullQuestion);
-        if (fullQuestion.length > 15 && containsQuestion) {
+        // --- QUESTION DETECTION: use heuristic classifier, not just ? ---
+        const { isQuestion } = detectQuestion(fullQuestion);
+        if (fullQuestion.length > 10 && isQuestion) {
           console.log('[AutoAnswer] Question detected — generating answer');
           questionBufferRef.current = [];
           lastAnswerTime.current = Date.now();
           handleAnswerNow(fullQuestion);
         } else {
-          console.log('[AutoAnswer] No question detected — keeping in buffer');
+          console.log('[AutoAnswer] Not a question — keeping in buffer');
         }
       }
 
@@ -252,9 +267,12 @@ export function LiveSession() {
           return longer.includes(shorter.slice(0, Math.max(12, Math.floor(shorter.length * 0.7))));
         };
         if (isSimilarText(micText, sysText)) return;
-        addTranscript({ id: ongoingMicId, session_id: currentSession!.id, speaker: 'You', text, start_time: Date.now(), end_time: Date.now(), is_final: isFinal });
+        const micTranscript = { id: ongoingMicId, session_id: currentSession!.id, speaker: 'You', text, start_time: Date.now(), end_time: Date.now(), is_final: isFinal };
+        addTranscript(micTranscript);
         if (analytics) setMicAnalytics(prev => ({ wpm: isFinal ? analytics.wpm : prev.wpm, fillers: prev.fillers + analytics.fillers }));
         if (isFinal) {
+          // Persist final user transcript to DB
+          if ((window as any).electronAPI) (window as any).electronAPI.db.saveTranscript(micTranscript);
           ongoingMicId = Date.now().toString() + '-mic';
         }
       });
@@ -265,8 +283,11 @@ export function LiveSession() {
 
   const handleAnswerNow = async (specificQuestion?: string) => {
     const { profile: freshProfile, currentSession: freshSession, documents: freshDocs, transcripts: freshTranscripts, selectedModel, extraInstructions } = useStore.getState();
-    if (!freshSession || !llm.current || !keysReady) {
-      console.warn('[LiveSession] handleAnswerNow blocked: session=', !!freshSession, 'llm=', !!llm.current, 'keysReady=', keysReady);
+    const provider: LLMProvider | null = selectedModel.startsWith('claude-')
+      ? llmAnthropic.current
+      : llmOpenAI.current;
+    if (!freshSession || !provider || !keysReady) {
+      console.warn('[LiveSession] handleAnswerNow blocked: session=', !!freshSession, 'provider=', !!provider, 'keysReady=', keysReady);
       return;
     }
 
@@ -287,12 +308,21 @@ export function LiveSession() {
     if ((window as any).electronAPI) (window as any).electronAPI.widget.update({ text: 'Generating answer...', question: questionToUse });
 
     const resumeText = freshProfile?.resume_text || '';
+
+    // Use session's interview type; fall back to heuristic classifier for 'auto'/unknown
+    const detectedType = detectQuestion(questionToUse).type;
+    const effectiveType: 'behavioral' | 'technical' | 'general' =
+      freshSession.interview_type === 'behavioral' ? 'behavioral'
+      : freshSession.interview_type === 'technical' ? 'technical'
+      : (detectedType === 'behavioral' || detectedType === 'technical') ? detectedType
+      : 'general';
+
     const prompt = buildPrompt(
       resumeText,
       freshSession.job_description,
-      freshTranscripts.slice(-5).map(t => t.text),
+      freshTranscripts.map(t => t.text),   // buildPrompt internally slices to last 8
       questionToUse,
-      freshSession.interview_type as any,
+      effectiveType,
       freshSession.language,
       freshDocs,
       extraInstructions
@@ -317,7 +347,7 @@ export function LiveSession() {
       }).join('\n');
     };
 
-    await llm.current.generateAnswerStream(
+    await provider.generateAnswerStream(
       questionToUse,
       prompt,
       selectedModel,
@@ -540,15 +570,6 @@ export function LiveSession() {
         @keyframes pulse { 0%, 100% { opacity: 0.3; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
-      {/* Debug Status Bar */}
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '4px 12px', background: 'rgba(0,0,0,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '1rem', fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)', pointerEvents: 'none', zIndex: 100 }}>
-        <span>MIC: {audioMic.current ? `ACTIVE (${audioMic.current.getVolume()})` : 'OFF'}</span>
-        <span>SYS: {audioSystem.current ? `ACTIVE (${audioSystem.current.getVolume()})` : 'OFF'}</span>
-        <span>STT: {sttSystem.current ? `${sttSystem.current.getStats().sent} (S:${sttSystem.current.getStats().state}) ${sttSystem.current.getStats().error || ''}` : 'OFF'}</span>
-        <span>REC: {isRecording ? 'ON' : 'OFF'}</span>
-        <button onClick={() => window.location.reload()} style={{ pointerEvents: 'auto', background: 'none', border: 'none', color: '#a78bfa', textDecoration: 'underline', cursor: 'pointer' }}>Re-Sync</button>
-        <span style={{ marginLeft: 'auto' }}>SESS: {currentSession?.id?.slice(0,5)}</span>
-      </div>
     </div>
   );
 }
